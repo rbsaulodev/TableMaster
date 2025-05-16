@@ -1,0 +1,25 @@
+package com.rb.TableMaster.DTO;
+
+import com.rb.TableMaster.model.Order;
+import com.rb.TableMaster.model.enums.TableStatus;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
+import java.util.List;
+
+public record RestaurantTableDTO(
+        Long id,
+
+        @Positive(message = "O número da mesa deve ser positivo")
+        int number,
+
+        @NotNull(message = "O status da mesa é obrigatório")
+        TableStatus status,
+
+        @Positive(message = "A capacidade da mesa deve ser maior que zero")
+        int capacity,
+
+        List<Order> orders
+) {
+
+}

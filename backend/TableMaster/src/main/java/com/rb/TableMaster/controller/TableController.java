@@ -1,7 +1,7 @@
 package com.rb.TableMaster.controller;
 
-import com.rb.TableMaster.model.RestaurantTable;
-import com.rb.TableMaster.service.TableService;
+import com.rb.TableMaster.DTO.RestaurantTableDTO;
+import com.rb.TableMaster.service.RestaurantTableService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -18,26 +18,26 @@ import java.util.List;
 @Validated
 public class TableController {
 
-    private final TableService tableService;
+    private final RestaurantTableService tableService;
 
     @GetMapping
-    public List<RestaurantTable> list() {
+    public List<RestaurantTableDTO> list() {
         return tableService.list();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public RestaurantTable create(@RequestBody @Valid RestaurantTable table) {
+    public RestaurantTableDTO create(@RequestBody @Valid RestaurantTableDTO table) {
         return tableService.create(table);
     }
 
-        @GetMapping("/{id}")
-        public RestaurantTable findById(@PathVariable @NotNull @Positive Long id) {
-            return tableService.findById(id);
-        }
+    @GetMapping("/{id}")
+    public RestaurantTableDTO findById(@PathVariable @NotNull @Positive Long id) {
+        return tableService.findById(id);
+    }
 
     @PutMapping("/{id}")
-    public RestaurantTable update(@RequestBody @Valid RestaurantTable table, @PathVariable @NotNull @Positive Long id) {
+    public RestaurantTableDTO update(@RequestBody @Valid RestaurantTableDTO table, @PathVariable @NotNull @Positive Long id) {
         return tableService.update(table, id);
     }
 
