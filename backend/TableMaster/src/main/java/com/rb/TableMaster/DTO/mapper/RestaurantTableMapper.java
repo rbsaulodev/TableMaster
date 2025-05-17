@@ -8,9 +8,8 @@ import org.springframework.stereotype.Component;
 public class RestaurantTableMapper {
 
     public RestaurantTableDTO toDTO(RestaurantTable entity) {
-        if (entity == null) {
+        if (entity == null)
             return null;
-        }
 
         return new RestaurantTableDTO(
                 entity.getId() != null ? entity.getId() : 0L,
@@ -22,15 +21,13 @@ public class RestaurantTableMapper {
     }
 
     public RestaurantTable toEntity(RestaurantTableDTO dto) {
-        if (dto == null) {
+        if (dto == null)
             return null;
-        }
 
         RestaurantTable entity = new RestaurantTable();
 
-        if (dto.id() != null) {
+        if (dto.id() != null)
             entity.setId(dto.id());
-        }
 
         entity.setNumber(dto.number());
         entity.setStatus(dto.status());
