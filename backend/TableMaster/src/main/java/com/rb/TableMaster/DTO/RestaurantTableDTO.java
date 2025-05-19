@@ -4,10 +4,12 @@ import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.enums.TableStatus;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 
 import java.util.List;
 
 public record RestaurantTableDTO(
+        @PositiveOrZero
         Long id,
 
         @Positive(message = "O número da mesa deve ser positivo")
