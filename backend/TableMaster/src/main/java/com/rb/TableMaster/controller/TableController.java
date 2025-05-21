@@ -1,6 +1,6 @@
 package com.rb.TableMaster.controller;
 
-import com.rb.TableMaster.DTO.RestaurantTableDTO;
+import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.service.RestaurantTableService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;

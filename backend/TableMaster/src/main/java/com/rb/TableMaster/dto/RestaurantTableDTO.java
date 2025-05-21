@@ -1,4 +1,4 @@
-package com.rb.TableMaster.DTO;
+package com.rb.TableMaster.dto;
 
 import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.enums.TableStatus;

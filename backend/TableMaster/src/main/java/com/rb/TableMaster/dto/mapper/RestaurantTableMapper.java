@@ -1,6 +1,6 @@
-package com.rb.TableMaster.DTO.mapper;
+package com.rb.TableMaster.dto.mapper;
 
-import com.rb.TableMaster.DTO.RestaurantTableDTO;
+import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.model.RestaurantTable;
 import org.springframework.stereotype.Component;
 

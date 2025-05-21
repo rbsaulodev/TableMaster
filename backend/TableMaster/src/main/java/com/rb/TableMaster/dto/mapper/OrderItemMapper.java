@@ -1,6 +1,6 @@
-package com.rb.TableMaster.DTO.mapper;
+package com.rb.TableMaster.dto.mapper;
 
-import com.rb.TableMaster.DTO.OrderItemDTO;
+import com.rb.TableMaster.dto.OrderItemDTO;
 import com.rb.TableMaster.model.MenuItem;
 import com.rb.TableMaster.model.OrderItem;
 import org.springframework.stereotype.Component;

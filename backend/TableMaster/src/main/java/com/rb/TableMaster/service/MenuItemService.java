@@ -1,7 +1,7 @@
 package com.rb.TableMaster.service;
 
-import com.rb.TableMaster.DTO.MenuItemDTO;
-import com.rb.TableMaster.DTO.mapper.MenuItemMapper;
+import com.rb.TableMaster.dto.MenuItemDTO;
+import com.rb.TableMaster.dto.mapper.MenuItemMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.MenuItem;
 import com.rb.TableMaster.repository.MenuItemRepository;

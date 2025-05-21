@@ -1,4 +1,4 @@
-package com.rb.TableMaster.DTO;
+package com.rb.TableMaster.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

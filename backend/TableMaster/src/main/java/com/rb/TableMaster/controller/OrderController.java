@@ -1,6 +1,6 @@
 package com.rb.TableMaster.controller;
 
-import com.rb.TableMaster.DTO.OrderDTO;
+import com.rb.TableMaster.dto.OrderDTO;
 import com.rb.TableMaster.service.OrderService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;

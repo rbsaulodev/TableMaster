@@ -1,7 +1,7 @@
 package com.rb.TableMaster.service;
 
-import com.rb.TableMaster.DTO.OrderItemDTO;
-import com.rb.TableMaster.DTO.mapper.OrderItemMapper;
+import com.rb.TableMaster.dto.OrderItemDTO;
+import com.rb.TableMaster.dto.mapper.OrderItemMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.MenuItem;
 import com.rb.TableMaster.model.Order;

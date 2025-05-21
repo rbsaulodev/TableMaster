@@ -1,9 +1,9 @@
 package com.rb.TableMaster.service;
 
-import com.rb.TableMaster.DTO.OrderDTO;
-import com.rb.TableMaster.DTO.OrderItemDTO;
-import com.rb.TableMaster.DTO.mapper.OrderItemMapper;
-import com.rb.TableMaster.DTO.mapper.OrderMapper;
+import com.rb.TableMaster.dto.OrderDTO;
+import com.rb.TableMaster.dto.OrderItemDTO;
+import com.rb.TableMaster.dto.mapper.OrderItemMapper;
+import com.rb.TableMaster.dto.mapper.OrderMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.MenuItem;
 import com.rb.TableMaster.model.Order;
@@ -74,4 +74,20 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(id, Order.class));
         orderRepository.delete(order);
     }
+
+    public void addClient(){}
+
+    public void addItemsToOrder(){}
+
+    public void removeItemFromOrder(){}
+
+    public void releaseTable(){}
+
+    public void findOrdersByTableId(){}
+
+    public void finOrdersByCpfClient(){}
+
+    public void findActiveOrderByTableId(){}
+
+    public void cancelOrder(){}
 }

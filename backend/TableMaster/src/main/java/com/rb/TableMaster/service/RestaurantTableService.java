@@ -1,7 +1,7 @@
 package com.rb.TableMaster.service;
 
-import com.rb.TableMaster.DTO.RestaurantTableDTO;
-import com.rb.TableMaster.DTO.mapper.RestaurantTableMapper;
+import com.rb.TableMaster.dto.RestaurantTableDTO;
+import com.rb.TableMaster.dto.mapper.RestaurantTableMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.RestaurantTable;
 import com.rb.TableMaster.repository.RestaurantTableRepository;

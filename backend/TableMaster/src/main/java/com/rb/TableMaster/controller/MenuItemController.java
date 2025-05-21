@@ -1,6 +1,6 @@
 package com.rb.TableMaster.controller;
 
-import com.rb.TableMaster.DTO.MenuItemDTO;
+import com.rb.TableMaster.dto.MenuItemDTO;
 import com.rb.TableMaster.service.MenuItemService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
