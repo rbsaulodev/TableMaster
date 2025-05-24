@@ -4,6 +4,7 @@ import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.dto.mapper.RestaurantTableMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.RestaurantTable;
+import com.rb.TableMaster.model.enums.TableStatus;
 import com.rb.TableMaster.repository.RestaurantTableRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -60,5 +61,55 @@ public class RestaurantTableService {
         RestaurantTable table = tableRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, RestaurantTable.class));
         tableRepository.delete(table);
+    }
+
+
+    public RestaurantTableDTO reserveTable(@NotNull @Positive Long id) {
+        RestaurantTable table = tableRepository.findById(id)
+                .orElseThrow(() -> new RecordNotFoundException(id, RestaurantTable.class));
+
+        if (table.getStatus() == TableStatus.RESERVED) {
+            throw new IllegalStateException("A mesa já está reservada.");
+        }
+        if (table.getStatus() == TableStatus.OCCUPIED) {
+            throw new IllegalStateException("A mesa está ocupada e não pode ser reservada.");
+        }
+
+        table.setStatus(TableStatus.RESERVED);
+        RestaurantTable updated = tableRepository.save(table);
+        return tableMapper.toDTO(updated);
+    }
+
+    public RestaurantTableDTO occupyTable(@NotNull @Positive Long id) {
+        RestaurantTable table = tableRepository.findById(id)
+                .orElseThrow(() -> new RecordNotFoundException(id, RestaurantTable.class));
+
+        if (table.getStatus() == TableStatus.OCCUPIED) {
+            throw new IllegalStateException("A mesa já está ocupada.");
+        }
+
+        table.setStatus(TableStatus.OCCUPIED);
+        RestaurantTable updated = tableRepository.save(table);
+        return tableMapper.toDTO(updated);
+    }
+
+    public RestaurantTableDTO releaseTable(@NotNull @Positive Long id) {
+        RestaurantTable table = tableRepository.findById(id)
+                .orElseThrow(() -> new RecordNotFoundException(id, RestaurantTable.class));
+
+        if (table.getStatus() == TableStatus.AVAILABLE) {
+            throw new IllegalStateException("A mesa já está disponível.");
+        }
+
+        table.setStatus(TableStatus.AVAILABLE);
+        RestaurantTable updated = tableRepository.save(table);
+        return tableMapper.toDTO(updated);
+    }
+
+    public List<RestaurantTableDTO> listAvailableTables() {
+        return tableRepository.findAll().stream()
+                .filter(table -> table.getStatus() == TableStatus.AVAILABLE)
+                .map(tableMapper::toDTO)
+                .toList();
     }
 }

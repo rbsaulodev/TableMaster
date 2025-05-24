@@ -12,6 +12,7 @@ import com.rb.TableMaster.repository.OrderRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
@@ -19,22 +20,13 @@ import java.util.List;
 
 @Validated
 @Service
+@AllArgsConstructor
 public class OrderItemService {
 
     private final OrderItemRepository orderItemRepository;
     private final OrderItemMapper orderItemMapper;
     private final OrderRepository orderRepository;
     private final MenuItemRepository menuItemRepository;
-
-    public OrderItemService(OrderItemRepository orderItemRepository,
-                            OrderItemMapper orderItemMapper,
-                            OrderRepository orderRepository,
-                            MenuItemRepository menuItemRepository) {
-        this.orderItemRepository = orderItemRepository;
-        this.orderItemMapper = orderItemMapper;
-        this.orderRepository = orderRepository;
-        this.menuItemRepository = menuItemRepository;
-    }
 
     public List<OrderItemDTO> list() {
         return orderItemRepository.findAll().stream()
@@ -49,19 +41,15 @@ public class OrderItemService {
     }
 
     public OrderItemDTO create(@Valid @NotNull OrderItemDTO dto, @NotNull @Positive Long orderId) {
-        // Buscar a ordem pelo ID
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
-        // Buscar o item do menu pelo ID
         MenuItem menuItem = menuItemRepository.findById(dto.menuItemId())
                 .orElseThrow(() -> new RecordNotFoundException(dto.menuItemId(), MenuItem.class));
 
-        // Criar a entidade OrderItem
         OrderItem entity = orderItemMapper.toEntity(dto, menuItem);
         entity.setOrder(order); // Definir a ordem
 
-        // Salvar e retornar
         OrderItem saved = orderItemRepository.save(entity);
         return orderItemMapper.toDTO(saved);
     }
@@ -69,11 +57,9 @@ public class OrderItemService {
     public OrderItemDTO update(@Valid @NotNull OrderItemDTO dto, @NotNull @Positive Long id) {
         return orderItemRepository.findById(id)
                 .map(recordFound -> {
-                    // Atualizar apenas os campos editáveis
                     recordFound.setQuantity(dto.quantity());
                     recordFound.setUnitPrice(dto.unitPrice());
 
-                    // Opcionalmente, atualizar o MenuItem se necessário
                     if (dto.menuItemId() != null &&
                             !dto.menuItemId().equals(recordFound.getMenuItem().getId())) {
                         MenuItem newMenuItem = menuItemRepository.findById(dto.menuItemId())
@@ -91,5 +77,11 @@ public class OrderItemService {
         OrderItem item = orderItemRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, OrderItem.class));
         orderItemRepository.delete(item);
+    }
+
+    public List<OrderItemDTO> listByOrderId(@NotNull @Positive Long orderId) {
+        return orderItemRepository.findByOrderId(orderId).stream()
+                .map(orderItemMapper::toDTO)
+                .toList();
     }
 }

@@ -2,34 +2,54 @@ package com.rb.TableMaster.dto.mapper;
 
 import com.rb.TableMaster.dto.UserDTO;
 import com.rb.TableMaster.model.User;
+import com.rb.TableMaster.model.enums.UserRole;
+import org.springframework.stereotype.Component;
 
+@Component
 public class UserMapper {
 
-    public static UserDTO toDTO(User user) {
-        if (user == null) return null;
+    public UserDTO toDTO(User user) {
+        if (user == null) {
+            return null;
+        }
 
         return new UserDTO(
                 user.getCpf(),
                 user.getUsername(),
+                null,
                 user.getFullName(),
                 user.getEmail(),
-                user.getRole(),
+                user.getRole().name(),
                 user.isActive(),
                 user.getCreatedAt()
         );
     }
 
-    public static User toEntity(UserDTO dto) {
-        if (dto == null) return null;
+    public User toEntity(UserDTO dto) {
+        if (dto == null) {
+            return null;
+        }
 
         User user = new User();
         user.setCpf(dto.cpf());
         user.setUsername(dto.username());
+
+        if (dto.password() != null) {
+            user.setPassword(dto.password());
+        }
+
         user.setFullName(dto.fullName());
         user.setEmail(dto.email());
-        user.setRole(dto.role());
-        user.setActive(dto.active());
-        user.setCreatedAt(dto.createdAt()); // normalmente JPA seta isso, cuidado ao persistir diretamente
+
+        if (dto.role() != null) {
+            user.setRole(UserRole.valueOf(dto.role()));
+        }
+
+        if (dto.active() != null) {
+            user.setActive(dto.active());
+        } else {
+            user.setActive(true);
+        }
 
         return user;
     }

@@ -19,5 +19,8 @@ public record MenuItemDTO(
 
         @NotNull(message = "O preço é obrigatório")
         @Positive(message = "O preço deve ser maior que zero")
-        BigDecimal price
+        BigDecimal price,
+
+        @NotNull(message = "A imagem é obrigatoria!")
+        String imageUrl
 ) {}
