@@ -1,5 +1,6 @@
 package com.rb.TableMaster.model;
 
+import com.rb.TableMaster.model.enums.OrderItemStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -22,4 +23,8 @@ public class OrderItem {
 
     private int quantity;
     private BigDecimal unitPrice;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private OrderItemStatus status = OrderItemStatus.PENDING;
 }

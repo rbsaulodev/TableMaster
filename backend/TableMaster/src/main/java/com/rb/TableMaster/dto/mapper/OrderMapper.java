@@ -1,75 +1,58 @@
 package com.rb.TableMaster.dto.mapper;
 
-import com.rb.TableMaster.dto.OrderDTO;
-import com.rb.TableMaster.dto.OrderItemDTO;
-import com.rb.TableMaster.model.MenuItem;
+import com.rb.TableMaster.dto.*;
 import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.OrderItem;
-import com.rb.TableMaster.model.RestaurantTable;
-import com.rb.TableMaster.model.User;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
 public class OrderMapper {
 
-    private final OrderItemMapper orderItemMapper;
-
-    public OrderMapper(OrderItemMapper orderItemMapper) {
-        this.orderItemMapper = orderItemMapper;
-    }
-
     public OrderDTO toDTO(Order order) {
-        if (order == null) return null;
-
-        List<OrderItemDTO> itemDTOs = order.getItems().stream()
-                .map(orderItemMapper::toDTO)
-                .collect(Collectors.toList());
+        if (order == null) {
+            return null;
+        }
 
         return new OrderDTO(
                 order.getId(),
-                order.getTable().getId(),
-                order.getUser().getCpf(),
-                itemDTOs,
+                order.getTable() != null ? order.getTable().getId() : null,
+                order.getTable() != null ? "Mesa " + order.getTable().getNumber() : null,
+                order.getUser() != null ? Long.valueOf(order.getUser().getCpf()) : null,
+                order.getUser() != null ? order.getUser().getFullName() : null,
+                order.getItems() != null ?
+                        order.getItems().stream().map(this::toDTO).collect(Collectors.toList()) : null,
                 order.getCreatedAt(),
-                order.getStatus()
+                order.getStatus(),
+                order.getTotalValue(),
+                order.getPaymentMethod(),
+                order.getClosedAt()
         );
     }
 
-    public Order toEntity(OrderDTO dto, RestaurantTable table, User user, List<MenuItem> menuItems) {
-        if (dto == null) return null;
-
-        Order order = new Order();
-        if (dto.id() != null) {
-            order.setId(dto.id());
+    public OrderItemDTO toDTO(OrderItem orderItem) {
+        if (orderItem == null) {
+            return null;
         }
 
-        order.setTable(table);
-        order.setUser(user);
-        order.setCreatedAt(dto.createdAt() != null ? dto.createdAt() : LocalDateTime.now());
-        order.setStatus(dto.status());
+        BigDecimal totalPrice = orderItem.getUnitPrice() != null ?
+                orderItem.getUnitPrice().multiply(BigDecimal.valueOf(orderItem.getQuantity())) :
+                BigDecimal.ZERO;
 
-        List<OrderItem> items = new ArrayList<>();
-        for (OrderItemDTO itemDTO : dto.items()) {
-            OrderItem item = new OrderItem();
-            item.setOrder(order);
-
-            MenuItem menuItem = menuItems.stream()
-                    .filter(mi -> mi.getId().equals(itemDTO.menuItemId()))
-                    .findFirst()
-                    .orElse(null);
-
-            item.setMenuItem(menuItem);
-            item.setQuantity(itemDTO.quantity());
-            items.add(item);
-        }
-
-        order.setItems(items);
-        return order;
+        return new OrderItemDTO(
+                orderItem.getId(),
+                orderItem.getOrder() != null ? orderItem.getOrder().getId() : null,
+                orderItem.getMenuItem() != null ? orderItem.getMenuItem().getId() : null,
+                orderItem.getMenuItem() != null ? orderItem.getMenuItem().getName() : null,
+                orderItem.getMenuItem() != null ? orderItem.getMenuItem().getDescription() : null,
+                orderItem.getQuantity(),
+                orderItem.getUnitPrice(),
+                totalPrice,
+                orderItem.getStatus()
+        );
     }
-
 }

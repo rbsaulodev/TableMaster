@@ -1,6 +1,7 @@
 package com.rb.TableMaster.model;
 
 import com.rb.TableMaster.model.enums.OrderStatus;
+import com.rb.TableMaster.model.enums.PaymentMethod;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.Getter;
@@ -29,6 +30,7 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items;
 
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @Enumerated(EnumType.STRING)
@@ -36,4 +38,11 @@ public class Order {
 
     @Column(name = "total_value")
     private BigDecimal totalValue = BigDecimal.ZERO;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method")
+    private PaymentMethod paymentMethod;
+
+    @Column(name = "closed_at")
+    private LocalDateTime closedAt;
 }
