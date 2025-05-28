@@ -1,5 +1,7 @@
 package com.rb.TableMaster.model;
 
+import com.rb.TableMaster.model.enums.MenuCategory;
+import com.rb.TableMaster.model.enums.DrinkType;
 import jakarta.persistence.*;
 import lombok.Data;
 
@@ -22,4 +24,11 @@ public class MenuItem {
 
     @Column(length = 500)
     private String imageUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private MenuCategory category;
+
+    @Enumerated(EnumType.STRING)
+    private DrinkType drinkType;
 }

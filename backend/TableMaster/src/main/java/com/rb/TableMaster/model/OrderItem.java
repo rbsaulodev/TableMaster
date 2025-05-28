@@ -14,11 +14,11 @@ public class OrderItem {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "order_id") // Chave estrangeira
+    @JoinColumn(name = "order_id")
     private Order order;
 
     @ManyToOne
-    @JoinColumn(name = "menu_item_id") // Chave estrangeira
+    @JoinColumn(name = "menu_item_id")
     private MenuItem menuItem;
 
     private int quantity;

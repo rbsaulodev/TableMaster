@@ -45,7 +45,7 @@ public class OrderController {
         List<OrderDTO> orders = orderService.findByTableId(tableId);
         return ResponseEntity.ok(orders);
     }
-//
+
 //    @GetMapping("/user/{cpf}/table/{tableId}")
 //    public ResponseEntity<List<OrderDTO>> findByUserCpfAndTableId(
 //            @PathVariable @NotBlank String cpf,

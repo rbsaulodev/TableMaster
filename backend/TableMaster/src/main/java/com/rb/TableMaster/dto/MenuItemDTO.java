@@ -1,5 +1,7 @@
 package com.rb.TableMaster.dto;
 
+import com.rb.TableMaster.model.enums.DrinkType;
+import com.rb.TableMaster.model.enums.MenuCategory;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -22,5 +24,10 @@ public record MenuItemDTO(
         BigDecimal price,
 
         @NotNull(message = "A imagem é obrigatoria!")
-        String imageUrl
+        String imageUrl,
+
+        @NotNull(message = "A categoria é obrigatória")
+        MenuCategory category,
+
+        DrinkType drinkType
 ) {}

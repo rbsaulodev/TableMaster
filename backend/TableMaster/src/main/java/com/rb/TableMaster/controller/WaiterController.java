@@ -7,6 +7,7 @@ import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.model.enums.PaymentMethod;
 import com.rb.TableMaster.service.WaiterService;
 import lombok.AllArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.List;
 @RequestMapping("/api/waiter")
 @AllArgsConstructor
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('WAITER') or hasRole('ADMIN')")
 public class WaiterController {
 
     private final WaiterService waiterService;

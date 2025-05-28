@@ -2,6 +2,7 @@ package com.rb.TableMaster.service;
 
 import com.rb.TableMaster.dto.MenuItemDTO;
 import com.rb.TableMaster.dto.mapper.MenuItemMapper;
+import com.rb.TableMaster.model.enums.MenuCategory;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.MenuItem;
 import com.rb.TableMaster.repository.MenuItemRepository;
@@ -31,6 +32,12 @@ public class MenuItemService {
                 .toList();
     }
 
+    public List<MenuItemDTO> listByCategory(@NotNull MenuCategory category) {
+        return menuItemRepository.findByCategory(category).stream()
+                .map(menuItemMapper::toDTO)
+                .toList();
+    }
+
     public MenuItemDTO findById(@NotNull @Positive Long id) {
         return menuItemRepository.findById(id)
                 .map(menuItemMapper::toDTO)
@@ -38,17 +45,28 @@ public class MenuItemService {
     }
 
     public MenuItemDTO create(@Valid @NotNull MenuItemDTO menuItemDTO) {
+        validateMenuItem(menuItemDTO);
         MenuItem entity = menuItemMapper.toEntity(menuItemDTO);
         MenuItem saved = menuItemRepository.save(entity);
         return menuItemMapper.toDTO(saved);
     }
 
     public MenuItemDTO update(@Valid @NotNull MenuItemDTO menuItemDTO, @NotNull @Positive Long id) {
+        validateMenuItem(menuItemDTO);
         return menuItemRepository.findById(id)
                 .map(recordFound -> {
                     recordFound.setName(menuItemDTO.name());
                     recordFound.setDescription(menuItemDTO.description());
                     recordFound.setPrice(menuItemDTO.price());
+                    recordFound.setImageUrl(menuItemDTO.imageUrl());
+                    recordFound.setCategory(menuItemDTO.category());
+
+                    if (menuItemDTO.category() == MenuCategory.DRINKS) {
+                        recordFound.setDrinkType(menuItemDTO.drinkType());
+                    } else {
+                        recordFound.setDrinkType(null);
+                    }
+
                     MenuItem updated = menuItemRepository.save(recordFound);
                     return menuItemMapper.toDTO(updated);
                 })
@@ -59,5 +77,15 @@ public class MenuItemService {
         MenuItem item = menuItemRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, MenuItem.class));
         menuItemRepository.delete(item);
+    }
+
+    private void validateMenuItem(MenuItemDTO menuItemDTO) {
+        if (menuItemDTO.category() == MenuCategory.DRINKS && menuItemDTO.drinkType() == null) {
+            throw new IllegalArgumentException("O tipo de bebida é obrigatório para itens da categoria BEBIDAS");
+        }
+
+        if (menuItemDTO.category() != MenuCategory.DRINKS && menuItemDTO.drinkType() != null) {
+            throw new IllegalArgumentException("O tipo de bebida só pode ser definido para itens da categoria BEBIDAS");
+        }
     }
 }

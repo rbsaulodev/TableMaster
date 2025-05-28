@@ -3,6 +3,7 @@ package com.rb.TableMaster.controller;
 import com.rb.TableMaster.dto.OrderItemDTO;
 import com.rb.TableMaster.service.KitchenService;
 import lombok.AllArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.List;
 @RequestMapping("/api/kitchen")
 @AllArgsConstructor
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('CHEF') or hasRole('ADMIN')")
 public class KitchenController {
 
     private final KitchenService kitchenService;

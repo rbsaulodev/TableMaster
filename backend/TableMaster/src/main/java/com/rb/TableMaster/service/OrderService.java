@@ -53,11 +53,11 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(orderDTO.userId(), User.class));
 
         if (!user.isActive()) {
-            throw new IllegalStateException("User with ID " + orderDTO.userId() + " is inactive and cannot create orders");
+            throw new IllegalStateException("Usuário com ID " + orderDTO.userId() + " está inativo e não pode criar pedidos");
         }
 
         if (table.getStatus() != TableStatus.AVAILABLE) {
-            throw new IllegalStateException("Table with ID " + table.getId() + " is not available");
+            throw new IllegalStateException("Mesa com ID " + table.getId() + " não está disponível");
         }
 
         List<MenuItem> menuItems = menuItemRepository.findAllById(
@@ -92,7 +92,6 @@ public class OrderService {
         order.setItems(orderItems);
         order.setTotalValue(calculateTotalValue(order));
 
-        // Atualiza status da mesa
         table.setStatus(TableStatus.OCCUPIED);
         tableRepository.save(table);
 
@@ -106,19 +105,19 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(cpf, User.class));
 
         if (!user.isActive()) {
-            throw new IllegalStateException("User with CPF " + cpf + " is inactive");
+            throw new IllegalStateException("Usuário com CPF " + cpf + " está inativo");
         }
 
         RestaurantTable table = tableRepository.findById(tableId)
                 .orElseThrow(() -> new RecordNotFoundException(tableId, RestaurantTable.class));
 
         if (table.getStatus() != TableStatus.AVAILABLE) {
-            throw new IllegalStateException("Table is not available for reservation");
+            throw new IllegalStateException("Mesa não está disponível para reserva");
         }
 
         List<Order> openOrders = orderRepository.findByUserAndStatus(user, OrderStatus.OPEN);
         if (!openOrders.isEmpty()) {
-            throw new IllegalStateException("User already has an open order");
+            throw new IllegalStateException("Usuário já possui um pedido em aberto");
         }
 
         table.setStatus(TableStatus.OCCUPIED);
@@ -141,7 +140,7 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
         if (order.getStatus() != OrderStatus.OPEN) {
-            throw new IllegalStateException("Cannot add items to a closed order");
+            throw new IllegalStateException("Não é possível adicionar itens a um pedido fechado");
         }
 
         List<MenuItem> menuItems = menuItemRepository.findAllById(
@@ -180,11 +179,11 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
         if (order.getStatus() != OrderStatus.OPEN) {
-            throw new IllegalStateException("Only open orders can be finalized");
+            throw new IllegalStateException("Apenas pedidos em aberto podem ser finalizados");
         }
 
         if (order.getItems().isEmpty()) {
-            throw new IllegalStateException("Cannot finalize an empty order");
+            throw new IllegalStateException("Não é possível finalizar um pedido vazio");
         }
 
         order.setStatus(OrderStatus.UNPAID);
@@ -200,14 +199,13 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
         if (order.getStatus() != OrderStatus.UNPAID) {
-            throw new IllegalStateException("Only unpaid orders can be paid");
+            throw new IllegalStateException("Apenas pedidos não pagos podem ser pagos");
         }
 
         order.setStatus(OrderStatus.PAID);
         order.setPaymentMethod(paymentMethod);
         order.setClosedAt(LocalDateTime.now());
 
-        // Libera a mesa
         RestaurantTable table = order.getTable();
         table.setStatus(TableStatus.AVAILABLE);
         tableRepository.save(table);
@@ -254,15 +252,15 @@ public class OrderService {
         OrderStatus currentStatus = order.getStatus();
 
         if (currentStatus == OrderStatus.PAID) {
-            throw new IllegalStateException("Paid orders cannot be modified");
+            throw new IllegalStateException("Pedidos pagos não podem ser modificados");
         }
 
         if (newStatus == OrderStatus.PAID && currentStatus != OrderStatus.UNPAID) {
-            throw new IllegalStateException("Only unpaid orders can be paid");
+            throw new IllegalStateException("Apenas pedidos não pagos podem ser pagos");
         }
 
         if (newStatus == OrderStatus.UNPAID && currentStatus != OrderStatus.OPEN) {
-            throw new IllegalStateException("Only open orders can be finalized");
+            throw new IllegalStateException("Apenas pedidos em aberto podem ser finalizados");
         }
 
         order.setStatus(newStatus);
@@ -295,7 +293,7 @@ public class OrderService {
                 .orElseThrow(() -> new RecordNotFoundException(orderDTO.userId(), User.class));
 
         if (!user.isActive()) {
-            throw new IllegalStateException("User is inactive and cannot update orders");
+            throw new IllegalStateException("Usuário está inativo e não pode atualizar pedidos");
         }
 
         List<MenuItem> menuItems = menuItemRepository.findAllById(
@@ -304,12 +302,10 @@ public class OrderService {
                         .collect(Collectors.toList())
         );
 
-        // Atualiza os dados básicos do pedido
         existingOrder.setTable(table);
         existingOrder.setUser(user);
         existingOrder.setStatus(orderDTO.status());
 
-        // Atualiza os itens do pedido
         existingOrder.getItems().clear();
         List<OrderItem> updatedItems = orderDTO.items().stream()
                 .map(itemDTO -> {
@@ -340,7 +336,6 @@ public class OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, Order.class));
 
-        // Libera a mesa se o pedido estiver aberto
         if (order.getStatus() == OrderStatus.OPEN) {
             order.getTable().setStatus(TableStatus.AVAILABLE);
             tableRepository.save(order.getTable());

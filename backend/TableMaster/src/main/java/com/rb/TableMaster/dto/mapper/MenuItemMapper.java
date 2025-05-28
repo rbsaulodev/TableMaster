@@ -1,6 +1,8 @@
 package com.rb.TableMaster.dto.mapper;
 
 import com.rb.TableMaster.dto.MenuItemDTO;
+import com.rb.TableMaster.model.enums.MenuCategory;
+import com.rb.TableMaster.model.enums.DrinkType;
 import com.rb.TableMaster.model.MenuItem;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +18,9 @@ public class MenuItemMapper {
                 entity.getName(),
                 entity.getDescription(),
                 entity.getPrice(),
-                entity.getImageUrl()
+                entity.getImageUrl(),
+                entity.getCategory(),
+                entity.getDrinkType()
         );
     }
 
@@ -30,6 +34,12 @@ public class MenuItemMapper {
         entity.setDescription(dto.description());
         entity.setPrice(dto.price());
         entity.setImageUrl(dto.imageUrl());
+        entity.setCategory(dto.category());
+
+        if (dto.category() == MenuCategory.DRINKS) {
+            entity.setDrinkType(dto.drinkType());
+        }
+
         return entity;
     }
 }
