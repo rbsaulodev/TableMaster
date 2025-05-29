@@ -25,13 +25,13 @@ public class ClientController {
 
     @GetMapping("/tables/available")
     public List<RestaurantTableDTO> getAvailableTables() {
-        return tableService.listAvailableTables();
+        return tableService.getAvailableTables();
     }
 
     @PostMapping("/reserve-table")
     @ResponseStatus(HttpStatus.CREATED)
     public OrderDTO reserveTable(@RequestParam String cpf, @RequestParam Long tableId) {
-        return orderService.createComandaWithReservation(cpf, tableId);
+        return orderService.createOrderForTable(tableId, cpf);
     }
 
     @GetMapping("/menu")
@@ -39,19 +39,19 @@ public class ClientController {
         return menuItemService.list();
     }
 
-    @PostMapping("/comanda/{comandaId}/items")
+    @PostMapping("/order/{orderId}/items")
     @ResponseStatus(HttpStatus.CREATED)
-    public OrderDTO addItemsToComanda(@PathVariable Long comandaId, @RequestBody List<OrderItemDTO> items) {
-        return orderService.addItemsToOrder(comandaId, items);
+    public OrderDTO addItemsToOrder(@PathVariable Long orderId, @RequestBody List<OrderItemDTO> items) {
+        return orderService.addItemsToOrder(orderId, items);
     }
 
-    @GetMapping("/comanda/user/{cpf}")
-    public List<OrderDTO> getMyComandas(@PathVariable String cpf) {
-        return orderService.findByUserCpf(cpf);
+    @GetMapping("/order/user/{cpf}")
+    public List<OrderDTO> getMyOrders(@PathVariable String cpf) {
+        return orderService.getOrdersByUser(cpf);
     }
 
-    @PatchMapping("/comanda/{comandaId}/finalize")
-    public OrderDTO requestBill(@PathVariable Long comandaId) {
-        return orderService.finalizeOrder(comandaId);
+    @PatchMapping("/order/{orderId}/request-bill")
+    public OrderDTO requestBill(@PathVariable Long orderId) {
+        return orderService.closeOrder(orderId);
     }
 }

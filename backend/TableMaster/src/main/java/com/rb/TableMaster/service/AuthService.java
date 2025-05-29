@@ -6,13 +6,11 @@ import com.rb.TableMaster.dto.RegisterDTO;
 import com.rb.TableMaster.exception.AuthenticationException;
 import com.rb.TableMaster.exception.UserException;
 import com.rb.TableMaster.model.User;
-import com.rb.TableMaster.model.enums.UserRole;
 import com.rb.TableMaster.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,20 +24,43 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
 
     @Transactional
-    public AuthResponseDTO register(RegisterDTO registerDTO) throws UserException {
+    public AuthResponseDTO register(RegisterDTO registerDTO) {
+        validateRegistration(registerDTO);
+
+        User user = buildUserFromRegisterDTO(registerDTO);
+        userRepository.save(user);
+
+        String jwtToken = jwtService.generateToken(user);
+
+        return buildAuthResponse(user, jwtToken, "Registro realizado com sucesso");
+    }
+
+    public AuthResponseDTO login(LoginDTO loginDTO) throws AuthenticationException {
+        try {
+            Authentication authentication = authenticateUser(loginDTO);
+            User user = (User) authentication.getPrincipal();
+
+            String jwtToken = jwtService.generateToken(user);
+            return buildAuthResponse(user, jwtToken, "Login realizado com sucesso");
+        } catch (Exception e) {
+            throw new AuthenticationException("Credenciais inválidas");
+        }
+    }
+
+    private void validateRegistration(RegisterDTO registerDTO) {
         if (userRepository.existsByUsername(registerDTO.getUsername())) {
             throw new UserException("Username já está em uso");
         }
-
         if (userRepository.existsByEmail(registerDTO.getEmail())) {
             throw new UserException("Email já está em uso");
         }
-
         if (userRepository.existsById(registerDTO.getCpf())) {
             throw new UserException("CPF já cadastrado");
         }
+    }
 
-        User user = User.builder()
+    private User buildUserFromRegisterDTO(RegisterDTO registerDTO) {
+        return User.builder()
                 .cpf(registerDTO.getCpf())
                 .username(registerDTO.getUsername())
                 .password(passwordEncoder.encode(registerDTO.getPassword()))
@@ -48,43 +69,24 @@ public class AuthService {
                 .role(registerDTO.getRole())
                 .active(true)
                 .build();
+    }
 
-        userRepository.save(user);
+    private Authentication authenticateUser(LoginDTO loginDTO) {
+        return authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        loginDTO.getUsername(),
+                        loginDTO.getPassword()
+                )
+        );
+    }
 
-        String jwtToken = jwtService.generateToken(user);
-
+    private AuthResponseDTO buildAuthResponse(User user, String token, String message) {
         return AuthResponseDTO.builder()
-                .token(jwtToken)
+                .token(token)
                 .username(user.getUsername())
                 .fullName(user.getFullName())
                 .role(user.getRole())
-                .message("Registro realizado com sucesso")
+                .message(message)
                 .build();
-    }
-
-    public AuthResponseDTO login(LoginDTO loginDTO) throws AuthenticationException {
-        try {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            loginDTO.getUsername(),
-                            loginDTO.getPassword()
-                    )
-            );
-
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-            User user = (User) authentication.getPrincipal();
-            String jwtToken = jwtService.generateToken(user);
-
-            return AuthResponseDTO.builder()
-                    .token(jwtToken)
-                    .username(user.getUsername())
-                    .fullName(user.getFullName())
-                    .role(user.getRole())
-                    .message("Login realizado com sucesso")
-                    .build();
-
-        } catch (Exception e) {
-            throw new AuthenticationException("Credenciais inválidas");
-        }
     }
 }

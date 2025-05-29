@@ -1,6 +1,7 @@
 package com.rb.TableMaster.controller;
 
 import com.rb.TableMaster.dto.OrderItemDTO;
+import com.rb.TableMaster.model.enums.OrderItemStatus;
 import com.rb.TableMaster.service.KitchenService;
 import lombok.AllArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,7 +13,7 @@ import java.util.List;
 @RequestMapping("/api/kitchen")
 @AllArgsConstructor
 @CrossOrigin(origins = "*")
-@PreAuthorize("hasRole('CHEF') or hasRole('ADMIN')")
+@PreAuthorize("hasRole('KITCHEN') or hasRole('ADMIN')")
 public class KitchenController {
 
     private final KitchenService kitchenService;
@@ -33,12 +34,12 @@ public class KitchenController {
     }
 
     @PatchMapping("/item/{itemId}/start-preparing")
-    public OrderItemDTO startPreparing(@PathVariable Long itemId) {
+    public OrderItemDTO startPreparingItem(@PathVariable Long itemId) {
         return kitchenService.startPreparing(itemId);
     }
 
     @PatchMapping("/item/{itemId}/mark-ready")
-    public OrderItemDTO markAsReady(@PathVariable Long itemId) {
+    public OrderItemDTO markItemAsReady(@PathVariable Long itemId) {
         return kitchenService.markAsReady(itemId);
     }
 }

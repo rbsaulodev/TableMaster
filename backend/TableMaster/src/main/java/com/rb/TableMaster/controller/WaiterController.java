@@ -7,6 +7,7 @@ import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.model.enums.PaymentMethod;
 import com.rb.TableMaster.service.WaiterService;
 import lombok.AllArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,14 +27,9 @@ public class WaiterController {
         return waiterService.getAllTables();
     }
 
-    @GetMapping("/comandas/open")
-    public List<OrderDTO> getOpenComandas() {
-        return waiterService.getAllOpenComandas();
-    }
-
-    @GetMapping("/comandas/unpaid")
-    public List<OrderDTO> getUnpaidComandas() {
-        return waiterService.getAllUnpaidComandas();
+    @GetMapping("/orders/active")
+    public List<OrderDTO> getActiveOrders() {
+        return waiterService.getActiveOrders();
     }
 
     @GetMapping("/items/ready")
@@ -46,13 +42,19 @@ public class WaiterController {
         return waiterService.getNotifications();
     }
 
-    @PatchMapping("/comanda/{comandaId}/pay")
-    public OrderDTO processPayment(@PathVariable Long comandaId, @RequestParam PaymentMethod paymentMethod) {
-        return waiterService.processPayment(comandaId, paymentMethod);
+    @PatchMapping("/order/{orderId}/pay")
+    public OrderDTO processPayment(@PathVariable Long orderId, @RequestParam PaymentMethod paymentMethod) {
+        return waiterService.processPayment(orderId, paymentMethod);
     }
 
     @PatchMapping("/item/{itemId}/deliver")
     public OrderItemDTO deliverItem(@PathVariable Long itemId) {
         return waiterService.deliverItem(itemId);
+    }
+
+    @DeleteMapping("/notifications/clear")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearNotifications() {
+        waiterService.clearNotifications();
     }
 }

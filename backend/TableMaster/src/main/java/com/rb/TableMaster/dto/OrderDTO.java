@@ -19,7 +19,7 @@ public record OrderDTO(
         String tableName,
 
         @NotNull @Positive
-        Long userId,
+        Long userCpf,
 
         String userName,
 

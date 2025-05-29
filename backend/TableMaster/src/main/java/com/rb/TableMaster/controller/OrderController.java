@@ -1,6 +1,7 @@
 package com.rb.TableMaster.controller;
 
 import com.rb.TableMaster.dto.OrderDTO;
+import com.rb.TableMaster.model.enums.PaymentMethod;
 import com.rb.TableMaster.service.OrderService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -34,25 +35,11 @@ public class OrderController {
         return ResponseEntity.ok(order);
     }
 
-    @GetMapping("/user/{cpf}")
-    public ResponseEntity<List<OrderDTO>> findByUserCpf(@PathVariable @NotBlank String cpf) {
-        List<OrderDTO> orders = orderService.findByUserCpf(cpf);
-        return ResponseEntity.ok(orders);
-    }
-
     @GetMapping("/table/{tableId}")
     public ResponseEntity<List<OrderDTO>> findByTableId(@PathVariable @NotNull @Positive Long tableId) {
         List<OrderDTO> orders = orderService.findByTableId(tableId);
         return ResponseEntity.ok(orders);
     }
-
-//    @GetMapping("/user/{cpf}/table/{tableId}")
-//    public ResponseEntity<List<OrderDTO>> findByUserCpfAndTableId(
-//            @PathVariable @NotBlank String cpf,
-//            @PathVariable @NotNull @Positive Long tableId) {
-//        List<OrderDTO> orders = orderService.findByUserCpfAndTableId(cpf, tableId);
-//        return ResponseEntity.ok(orders);
-//    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -73,5 +60,19 @@ public class OrderController {
     public ResponseEntity<Void> delete(@PathVariable @NotNull @Positive Long id) {
         orderService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/close")
+    public ResponseEntity<OrderDTO> closeOrder(@PathVariable @NotNull @Positive Long id) {
+        OrderDTO closedOrder = orderService.closeOrder(id);
+        return ResponseEntity.ok(closedOrder);
+    }
+
+    @PatchMapping("/{id}/pay")
+    public ResponseEntity<OrderDTO> payOrder(
+            @PathVariable @NotNull @Positive Long id,
+            @RequestParam PaymentMethod paymentMethod) {
+        OrderDTO paidOrder = orderService.payOrder(id, paymentMethod);
+        return ResponseEntity.ok(paidOrder);
     }
 }

@@ -6,6 +6,7 @@ import com.rb.TableMaster.model.enums.MenuCategory;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.MenuItem;
 import com.rb.TableMaster.repository.MenuItemRepository;
+import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
