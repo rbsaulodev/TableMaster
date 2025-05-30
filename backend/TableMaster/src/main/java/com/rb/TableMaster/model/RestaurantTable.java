@@ -3,12 +3,15 @@ package com.rb.TableMaster.model;
 import com.rb.TableMaster.model.enums.TableStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
-import lombok.Data;
+import lombok.*;
 
 import java.util.List;
 
 @Data
 @Entity
+@Builder
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(name = "restaurant_table")
 public class RestaurantTable {
 

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +24,13 @@ public class RestaurantTableService {
     private final RestaurantTableMapper tableMapper;
     private final OrderRepository orderRepository;
 
+    @Transactional
+    public List<RestaurantTableDTO> listAll() {
+        return tableRepository.findAll()
+                .stream()
+                .map(tableMapper::toDTO)
+                .collect(Collectors.toList());
+    }
 
     public RestaurantTableDTO reserveTable(Long tableId, String userCpf) {
         RestaurantTable table = tableRepository.findById(tableId)
@@ -51,7 +59,6 @@ public class RestaurantTableService {
         table.setStatus(TableStatus.OCCUPIED);
         RestaurantTable savedTable = tableRepository.save(table);
 
-        // Cria automaticamente uma order para a mesa
         orderService.createOrderForTable(tableId, userCpf);
 
         return tableMapper.toDTO(savedTable);
@@ -65,7 +72,6 @@ public class RestaurantTableService {
             throw new IllegalStateException("A mesa já está disponível");
         }
 
-        // Verifica se há pedidos em aberto para esta mesa
         List<Order> openOrders = orderRepository.findByTableAndStatusIn(table,
                 List.of(OrderStatus.OPEN, OrderStatus.UNPAID));
 

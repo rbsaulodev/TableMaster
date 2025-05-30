@@ -1,5 +1,7 @@
 package com.rb.TableMaster.service;
 
+import com.rb.TableMaster.dto.MenuItemDTO;
+import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.dto.UserDTO;
 import com.rb.TableMaster.dto.mapper.UserMapper;
 import com.rb.TableMaster.exception.UserException;
@@ -13,7 +15,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,6 +25,8 @@ public class AdminService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
+    private final RestaurantTableService restaurantTableService;
+    private final MenuItemService menuItemService;
 
     @Transactional(readOnly = true)
     public Page<UserDTO> findAllUsers(Pageable pageable) {
@@ -52,7 +55,6 @@ public class AdminService {
 
         User user = userMapper.toEntity(userDTO);
         user.setPassword(passwordEncoder.encode(userDTO.password()));
-        user.setCreatedAt(LocalDateTime.now());
 
         return userMapper.toDTO(userRepository.save(user));
     }
@@ -83,7 +85,6 @@ public class AdminService {
         } catch (IllegalArgumentException e) {
             throw new UserException("Perfil informado é inválido");
         }
-
         return userMapper.toDTO(userRepository.save(user));
     }
 
@@ -129,5 +130,25 @@ public class AdminService {
                 .stream()
                 .map(userMapper::toDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public RestaurantTableDTO createTable(RestaurantTableDTO tableDTO) {
+        return restaurantTableService.create(tableDTO);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RestaurantTableDTO> findAllTables() {
+        return restaurantTableService.listAll();
+    }
+
+    @Transactional
+    public MenuItemDTO createMenuItem(MenuItemDTO menuItemDTO) {
+        return menuItemService.create(menuItemDTO);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MenuItemDTO> findAllMenuItems() {
+        return menuItemService.listAll();
     }
 }

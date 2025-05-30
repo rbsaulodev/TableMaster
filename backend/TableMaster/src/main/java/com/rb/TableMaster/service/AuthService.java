@@ -6,6 +6,7 @@ import com.rb.TableMaster.dto.RegisterDTO;
 import com.rb.TableMaster.exception.AuthenticationException;
 import com.rb.TableMaster.exception.UserException;
 import com.rb.TableMaster.model.User;
+import com.rb.TableMaster.model.enums.UserRole;
 import com.rb.TableMaster.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -28,6 +29,7 @@ public class AuthService {
         validateRegistration(registerDTO);
 
         User user = buildUserFromRegisterDTO(registerDTO);
+        user.setRole(UserRole.CUSTOMER);
         userRepository.save(user);
 
         String jwtToken = jwtService.generateToken(user);
@@ -48,25 +50,24 @@ public class AuthService {
     }
 
     private void validateRegistration(RegisterDTO registerDTO) {
-        if (userRepository.existsByUsername(registerDTO.getUsername())) {
+        if (userRepository.existsByUsername(registerDTO.username())) {
             throw new UserException("Username já está em uso");
         }
-        if (userRepository.existsByEmail(registerDTO.getEmail())) {
+        if (userRepository.existsByEmail(registerDTO.email())) {
             throw new UserException("Email já está em uso");
         }
-        if (userRepository.existsById(registerDTO.getCpf())) {
+        if (userRepository.existsById(registerDTO.cpf())) {
             throw new UserException("CPF já cadastrado");
         }
     }
 
     private User buildUserFromRegisterDTO(RegisterDTO registerDTO) {
         return User.builder()
-                .cpf(registerDTO.getCpf())
-                .username(registerDTO.getUsername())
-                .password(passwordEncoder.encode(registerDTO.getPassword()))
-                .fullName(registerDTO.getFullName())
-                .email(registerDTO.getEmail())
-                .role(registerDTO.getRole())
+                .cpf(registerDTO.cpf())
+                .username(registerDTO.username())
+                .password(passwordEncoder.encode(registerDTO.password()))
+                .fullName(registerDTO.fullName())
+                .email(registerDTO.email())
                 .active(true)
                 .build();
     }
@@ -74,8 +75,8 @@ public class AuthService {
     private Authentication authenticateUser(LoginDTO loginDTO) {
         return authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        loginDTO.getUsername(),
-                        loginDTO.getPassword()
+                        loginDTO.username(), // Acesso via .username()
+                        loginDTO.password() // Acesso via .password()
                 )
         );
     }

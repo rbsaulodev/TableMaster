@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Validated
 @Service
@@ -25,6 +26,14 @@ public class MenuItemService {
     public MenuItemService(MenuItemRepository menuItemRepository, MenuItemMapper menuItemMapper) {
         this.menuItemRepository = menuItemRepository;
         this.menuItemMapper = menuItemMapper;
+    }
+
+    @Transactional()
+    public List<MenuItemDTO> listAll() {
+        return menuItemRepository.findAll()
+                .stream()
+                .map(menuItemMapper::toDTO)
+                .collect(Collectors.toList());
     }
 
     public List<MenuItemDTO> list() {
