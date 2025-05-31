@@ -1,9 +1,8 @@
 package com.rb.TableMaster.dto.mapper;
 
 import com.rb.TableMaster.dto.MenuItemDTO;
-import com.rb.TableMaster.model.enums.MenuCategory;
-import com.rb.TableMaster.model.enums.DrinkType;
 import com.rb.TableMaster.model.MenuItem;
+import com.rb.TableMaster.model.enums.MenuCategory;
 import org.springframework.stereotype.Component;
 
 @Component

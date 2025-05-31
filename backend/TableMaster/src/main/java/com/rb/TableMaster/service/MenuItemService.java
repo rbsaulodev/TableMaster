@@ -28,6 +28,10 @@ public class MenuItemService {
         this.menuItemMapper = menuItemMapper;
     }
 
+    public List<MenuItem> findAll() {
+        return menuItemRepository.findAll();
+    }
+
     @Transactional()
     public List<MenuItemDTO> listAll() {
         return menuItemRepository.findAll()
@@ -97,5 +101,10 @@ public class MenuItemService {
         if (menuItemDTO.category() != MenuCategory.DRINKS && menuItemDTO.drinkType() != null) {
             throw new IllegalArgumentException("O tipo de bebida só pode ser definido para itens da categoria BEBIDAS");
         }
+    }
+
+    public MenuItem findEntityById(Long id) {
+        return menuItemRepository.findById(id)
+                .orElseThrow(() -> new RecordNotFoundException(id, MenuItem.class));
     }
 }

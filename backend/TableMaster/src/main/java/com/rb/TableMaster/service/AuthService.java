@@ -31,7 +31,6 @@ public class AuthService {
         User user = buildUserFromRegisterDTO(registerDTO);
         user.setRole(UserRole.CUSTOMER);
         userRepository.save(user);
-
         String jwtToken = jwtService.generateToken(user);
 
         return buildAuthResponse(user, jwtToken, "Registro realizado com sucesso");
@@ -40,24 +39,26 @@ public class AuthService {
     public AuthResponseDTO login(LoginDTO loginDTO) throws AuthenticationException {
         try {
             Authentication authentication = authenticateUser(loginDTO);
-            User user = (User) authentication.getPrincipal();
+            UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+            User user = userDetails.getUser();
 
             String jwtToken = jwtService.generateToken(user);
             return buildAuthResponse(user, jwtToken, "Login realizado com sucesso");
         } catch (Exception e) {
+            System.err.println("Erro durante o login: " + e.getMessage());
             throw new AuthenticationException("Credenciais inválidas");
         }
     }
 
     private void validateRegistration(RegisterDTO registerDTO) {
-        if (userRepository.existsByUsername(registerDTO.username())) {
+        if (userRepository.existsById(registerDTO.cpf())) {
+            throw new UserException("CPF já cadastrado");
+        }
+        if (userRepository.findByUsername(registerDTO.username()).isPresent()) {
             throw new UserException("Username já está em uso");
         }
         if (userRepository.existsByEmail(registerDTO.email())) {
             throw new UserException("Email já está em uso");
-        }
-        if (userRepository.existsById(registerDTO.cpf())) {
-            throw new UserException("CPF já cadastrado");
         }
     }
 
@@ -75,8 +76,8 @@ public class AuthService {
     private Authentication authenticateUser(LoginDTO loginDTO) {
         return authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                        loginDTO.username(), // Acesso via .username()
-                        loginDTO.password() // Acesso via .password()
+                        loginDTO.username(),
+                        loginDTO.password()
                 )
         );
     }
@@ -88,6 +89,7 @@ public class AuthService {
                 .fullName(user.getFullName())
                 .role(user.getRole())
                 .message(message)
+                .cpf(user.getCpf())
                 .build();
     }
 }

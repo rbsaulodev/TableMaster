@@ -12,8 +12,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/kitchen")
 @AllArgsConstructor
-@CrossOrigin(origins = "*")
-@PreAuthorize("hasRole('KITCHEN') or hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('CHEF', 'WAITER', 'ADMIN')")
 public class KitchenController {
 
     private final KitchenService kitchenService;

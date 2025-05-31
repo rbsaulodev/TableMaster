@@ -16,7 +16,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/waiter")
 @AllArgsConstructor
-@CrossOrigin(origins = "*")
 @PreAuthorize("hasRole('WAITER') or hasRole('ADMIN')")
 public class WaiterController {
 

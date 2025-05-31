@@ -15,4 +15,5 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
     List<MenuItem> findByCategoryAndDrinkType(MenuCategory category, DrinkType drinkType);
     List<MenuItem> findByDrinkType(DrinkType drinkType);
     Optional<MenuItem> findByName(String name);
+
 }

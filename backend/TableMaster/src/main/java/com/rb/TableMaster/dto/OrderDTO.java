@@ -2,40 +2,27 @@ package com.rb.TableMaster.dto;
 
 import com.rb.TableMaster.model.enums.OrderStatus;
 import com.rb.TableMaster.model.enums.PaymentMethod;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
+import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Builder
 public record OrderDTO(
-        @PositiveOrZero
-        Long id,
-
-        @NotNull @Positive
-        Long tableId,
-
+        @PositiveOrZero Long id,
+        @NotNull Long tableId,
         String tableName,
-
-        @NotNull @Positive
-        Long userCpf,
-
+        @NotNull String userCpf,
         String userName,
-
-        @NotNull @NotEmpty @Valid
         List<OrderItemDTO> items,
-
         LocalDateTime createdAt,
-
-        @NotNull
         OrderStatus status,
-
-        @PositiveOrZero
         BigDecimal totalValue,
-
         PaymentMethod paymentMethod,
-
-        LocalDateTime closedAt
+        LocalDateTime closedAt,
+        String reservedTime
 ) {
 }

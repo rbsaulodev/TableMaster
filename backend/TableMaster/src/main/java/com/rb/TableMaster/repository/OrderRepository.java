@@ -13,10 +13,9 @@ import java.util.List;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
+    List<Order> findByTable(RestaurantTable table);
     List<Order> findByUser(User user);
-    boolean existsByTableAndStatusIn(RestaurantTable table, List<OrderStatus> open);
     List<Order> findByStatusIn(List<OrderStatus> statuses);
     List<Order> findByTableAndStatusIn(RestaurantTable table, List<OrderStatus> statuses);
-    List<Order> findByTableId(Long tableId);
-
 }
+

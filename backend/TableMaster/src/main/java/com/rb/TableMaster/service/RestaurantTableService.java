@@ -32,7 +32,8 @@ public class RestaurantTableService {
                 .collect(Collectors.toList());
     }
 
-    public RestaurantTableDTO reserveTable(Long tableId, String userCpf) {
+    @Transactional
+    public RestaurantTableDTO reserveTable(Long tableId, String userCpf, String reservedTime) {
         RestaurantTable table = tableRepository.findById(tableId)
                 .orElseThrow(() -> new RecordNotFoundException(tableId, RestaurantTable.class));
 
@@ -42,8 +43,7 @@ public class RestaurantTableService {
 
         table.setStatus(TableStatus.RESERVED);
         RestaurantTable savedTable = tableRepository.save(table);
-
-        orderService.createOrderForTable(tableId, userCpf);
+        orderService.createOrderForTable(tableId, userCpf, reservedTime);
 
         return tableMapper.toDTO(savedTable);
     }
@@ -59,7 +59,7 @@ public class RestaurantTableService {
         table.setStatus(TableStatus.OCCUPIED);
         RestaurantTable savedTable = tableRepository.save(table);
 
-        orderService.createOrderForTable(tableId, userCpf);
+        orderService.createOrderForTable(tableId, userCpf, null);
 
         return tableMapper.toDTO(savedTable);
     }

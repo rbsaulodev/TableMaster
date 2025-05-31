@@ -6,7 +6,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value; // Importe esta anotação
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -43,6 +43,7 @@ public class JwtService {
             User user = (User) userDetails;
             claims.put("fullName", user.getFullName());
             claims.put("role", user.getRole().name());
+            claims.put("cpf", user.getCpf());
         }
 
         return generateToken(claims, userDetails);
@@ -88,5 +89,9 @@ public class JwtService {
 
     public List<String> extractAuthorities(String token) {
         return extractClaim(token, claims -> claims.get("authorities", List.class));
+    }
+
+    public String extractCpf(String token) {
+        return extractClaim(token, claims -> claims.get("cpf", String.class));
     }
 }

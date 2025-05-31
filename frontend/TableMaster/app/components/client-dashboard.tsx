@@ -51,10 +51,8 @@ import {
   Search,
 } from "lucide-react"
 
-// Define the API base URL
 const BASE_URL = "http://localhost:8080/api"
 
-// Define types based on API documentation
 interface RestaurantTableDTO {
   id: number;
   number: number;
@@ -84,6 +82,7 @@ interface OrderDTO {
   totalValue: number;
   paymentMethod?: "CASH" | "CARD" | "PIX";
   closedAt?: string;
+  reservedTime?: string; // Incluir reservedTime no OrderDTO do frontend
 }
 
 interface OrderItemDTO {
@@ -101,7 +100,7 @@ interface OrderItemDTO {
 interface AuthResponseData {
   token: string;
   username: string;
-  fullName: string; // Garantir que fullName está na interface
+  fullName: string;
   role: string;
   message: string;
   cpf?: string;
@@ -109,7 +108,7 @@ interface AuthResponseData {
 
 interface ClientDashboardProps {
   cpf: string;
-  fullName: string; // Adicionado fullName às props
+  fullName: string;
   authToken: string;
   onLogout: () => void;
 }
@@ -242,7 +241,7 @@ function EnhancedCard({
   )
 }
 
-export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: ClientDashboardProps) { // Adicionado fullName aqui
+export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: ClientDashboardProps) {
   const { toast } = useToast()
   const [selectedItems, setSelectedItems] = useState<OrderItemDTO[]>([])
   const [reservedTable, setReservedTable] = useState<number | null>(null)
@@ -366,6 +365,14 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
     }
   }, [authToken, fetchAvailableTables, fetchMenuItems, fetchClientOrders]);
 
+  const formatCpfDisplay = (value: string) => {
+    const numbers = value.replace(/\D/g, "");
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+    if (numbers.length <= 9) return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6)}`;
+    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9, 11)}`;
+  };
+
 
   const handleCategorySelect = (category: string) => {
     setSelectedCategory(category)
@@ -438,13 +445,13 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
     }
 
     try {
-      const reserveResponse = await fetch(`${BASE_URL}/client/reserve/${tableId}`, {
+      const reserveResponse = await fetch(`${BASE_URL}/client/reserve`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ reservedTime: time }),
+        body: JSON.stringify({ tableId: tableId, reservedTime: time }),
       });
 
       if (!reserveResponse.ok) {
@@ -722,7 +729,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                     </Button>
                     {Object.keys(menuCategories).map((category) => (
                       <Button
-                        key={category} // Use category string as key
+                        key={category}
                         variant={selectedCategory === category ? "default" : "outline"}
                         onClick={() => setSelectedCategory(category)}
                         size="sm"
@@ -742,7 +749,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
 
                 return (
                   <EnhancedCard
-                    key={item.id} // Use item.id as key
+                    key={item.id}
                     className="hover:shadow-lg transition-all duration-200"
                     priority={item.popular ? "high" : "normal"}
                   >
@@ -1033,6 +1040,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                       </div>
                       <div>
                         <p className="font-medium text-emerald-800">Olá, {fullName}</p>
+                        <p className="text-sm text-emerald-600">{formatCpfDisplay(cpf)}</p>
                         {reservedTable && (
                           <div className="flex items-center gap-2 mt-1">
                             <Badge className="bg-amber-400 text-emerald-900 text-xs">Mesa {reservedTable}</Badge>
@@ -1123,7 +1131,6 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
             <SidebarRail />
           </Sidebar>
 
-          {/* Conteúdo Principal */}
           <PageLayout
             title={navigationItems.find((item) => item.key === activeView)?.title || "TableMaster"}
             breadcrumbs={getBreadcrumbs()}

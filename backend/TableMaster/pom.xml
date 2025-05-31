@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.rb</groupId>
-	<artifactId>TableMaster</artifactId>
+	<artifactId>tablemaster</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>TableMaster</name>
 	<description>API for managing restaurant tables, menu items, and customer orders. Backend for the TableMaster system.</description>

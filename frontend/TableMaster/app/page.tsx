@@ -19,11 +19,9 @@ export default function TableMaster() {
   const [currentUserData, setCurrentUserData] = useState<any>(null) // To store AuthResponseDTO
   const [activeTab, setActiveTab] = useState("login")
 
-  // Estados de login (para cliente)
   const [loginUsername, setLoginUsername] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
 
-  // Estados de registro (para cliente)
   const [registerData, setRegisterData] = useState({
     fullName: "",
     cpf: "",
@@ -56,9 +54,9 @@ export default function TableMaster() {
         throw new Error(errorData.message || "Erro ao fazer login.")
       }
 
-      const data = await response.json() // AuthResponseDTO
+      const data = await response.json()
       setAuthToken(data.token)
-      setCurrentUserData(data) // Salva o objeto completo, incluindo fullName
+      setCurrentUserData(data)
       toast({
         title: "Login realizado com sucesso! 🎉",
         description: `Bem-vindo(a), ${data.fullName}.`,
@@ -118,7 +116,7 @@ export default function TableMaster() {
           password: registerData.password,
           fullName: registerData.fullName,
           email: registerData.email,
-          role: "CUSTOMER", // Adicionando a role explicitamente para o registro de cliente
+          role: "CUSTOMER",
         }),
       })
 
@@ -127,7 +125,7 @@ export default function TableMaster() {
         throw new Error(errorData.message || "Erro ao registrar usuário.")
       }
 
-      const data = await response.json() // AuthResponseDTO
+      const data = await response.json()
       toast({
         title: "Cadastro realizado com sucesso! 🎉",
         description: "Agora você pode fazer login com seu usuário e senha.",
@@ -145,13 +143,6 @@ export default function TableMaster() {
     }
   }
 
-  const handleLogout = () => {
-    setAuthToken(null)
-    setCurrentUserData(null)
-    setLoginUsername("")
-    setLoginPassword("")
-  }
-
   const formatCPF = (value: string) => {
     const numbers = value.replace(/\D/g, "")
     if (numbers.length <= 3) return numbers
@@ -160,17 +151,27 @@ export default function TableMaster() {
     return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9, 11)}`
   }
 
+  const handleLogout = () => {
+    setAuthToken(null)
+    setCurrentUserData(null)
+    setActiveTab("login")
+    setLoginUsername("")
+    setLoginPassword("")
+    toast({
+      title: "Logout realizado",
+      description: "Você saiu da sua conta.",
+    })
+  }
+
   if (authToken && currentUserData) {
     if (currentUserData.role === "CUSTOMER") {
-      // Passa o fullName e o cpf
       return <ClientDashboard
-        cpf={currentUserData.cpf || currentUserData.username} // CPF se disponível no data, senão username
-        fullName={currentUserData.fullName} // Passando o fullName
+        cpf={formatCPF(currentUserData.cpf)}
+        fullName={currentUserData.fullName}
         authToken={authToken}
         onLogout={handleLogout}
       />
     }
-    // Para qualquer outra role que tentar logar na página de cliente, mostrar acesso negado
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
         <Card>

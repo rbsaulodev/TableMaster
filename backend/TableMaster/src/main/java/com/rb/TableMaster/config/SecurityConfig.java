@@ -37,11 +37,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/menu/**").permitAll()
 
-                        // 2. Endpoints que exigem roles específicas (mais específicos primeiro)
-                        // USANDO HASROLE() AGORA QUE VOCÊ GERA "ROLE_" NO USERROLE
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/waiter/**").hasRole("WAITER")
                         .requestMatchers("/api/chef/**").hasRole("CHEF")
+
+                        .requestMatchers("/api/kitchen/**").hasAnyRole("CHEF", "WAITER", "ADMIN")
 
                         .requestMatchers("/api/client/orders/**").hasRole("CUSTOMER")
                         .requestMatchers("/api/client/tables/available").hasRole("CUSTOMER")
