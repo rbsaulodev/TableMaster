@@ -1,5 +1,6 @@
 package com.rb.TableMaster.service;
 
+import com.rb.TableMaster.controller.WebSocketController;
 import com.rb.TableMaster.dto.NotificationDTO;
 import com.rb.TableMaster.dto.OrderDTO;
 import com.rb.TableMaster.dto.OrderItemDTO;
@@ -19,6 +20,7 @@ public class WaiterService {
     private final RestaurantTableService tableService;
     private final OrderItemService orderItemService;
     private final NotificationService notificationService;
+    private final WebSocketController webSocketController;
 
     public List<OrderDTO> getActiveOrders() {
         return orderService.getActiveOrders();
@@ -36,12 +38,15 @@ public class WaiterService {
     public OrderItemDTO deliverItem(Long itemId) {
         OrderItemDTO item = orderItemService.updateItemStatus(itemId, OrderItemStatus.DELIVERED);
         notificationService.markAsRead(itemId);
+        webSocketController.sendOrderItemUpdate(item);
         return item;
     }
 
     @Transactional
     public OrderDTO processPayment(Long orderId, PaymentMethod paymentMethod) {
-        return orderService.payOrder(orderId, paymentMethod);
+        OrderDTO order = orderService.payOrder(orderId, paymentMethod);
+        webSocketController.sendOrderUpdate(order);
+        return order;
     }
 
     public List<RestaurantTableDTO> getAllTables() {

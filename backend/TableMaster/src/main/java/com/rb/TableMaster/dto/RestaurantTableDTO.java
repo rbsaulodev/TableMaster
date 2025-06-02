@@ -1,6 +1,6 @@
+// src/main/java/com/rb/TableMaster/dto/RestaurantTableDTO.java
 package com.rb.TableMaster.dto;
 
-import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.enums.TableStatus;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -21,7 +21,6 @@ public record RestaurantTableDTO(
         @Positive(message = "A capacidade da mesa deve ser maior que zero")
         int capacity,
 
-        List<Order> orders
+        List<OrderDTO> orders
 ) {
-
 }

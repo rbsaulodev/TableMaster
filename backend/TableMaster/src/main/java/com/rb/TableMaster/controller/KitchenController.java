@@ -1,9 +1,11 @@
 package com.rb.TableMaster.controller;
 
+import com.rb.TableMaster.dto.MenuItemDTO;
 import com.rb.TableMaster.dto.OrderItemDTO;
-import com.rb.TableMaster.model.enums.OrderItemStatus;
 import com.rb.TableMaster.service.KitchenService;
-import lombok.AllArgsConstructor;
+import com.rb.TableMaster.service.MenuItemService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,23 +13,24 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/kitchen")
-@AllArgsConstructor
+@RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('CHEF', 'WAITER', 'ADMIN')")
 public class KitchenController {
 
     private final KitchenService kitchenService;
+    private final MenuItemService menuItemService;
 
-    @GetMapping("/items/pending")
+    @GetMapping("/pending")
     public List<OrderItemDTO> getPendingItems() {
         return kitchenService.getPendingItems();
     }
 
-    @GetMapping("/items/preparing")
+    @GetMapping("/preparing")
     public List<OrderItemDTO> getPreparingItems() {
         return kitchenService.getPreparingItems();
     }
 
-    @GetMapping("/items/ready")
+    @GetMapping("/ready")
     public List<OrderItemDTO> getReadyItems() {
         return kitchenService.getReadyItems();
     }
@@ -40,5 +43,10 @@ public class KitchenController {
     @PatchMapping("/item/{itemId}/mark-ready")
     public OrderItemDTO markItemAsReady(@PathVariable Long itemId) {
         return kitchenService.markAsReady(itemId);
+    }
+
+    @PatchMapping("/menu-item/{id}/toggle-availability")
+    public MenuItemDTO toggleMenuItemAvailability(@PathVariable Long id, @RequestParam boolean available) {
+        return menuItemService.toggleMenuItemAvailability(id, available);
     }
 }

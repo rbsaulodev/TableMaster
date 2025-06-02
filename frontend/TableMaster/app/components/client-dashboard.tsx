@@ -1,14 +1,12 @@
-// app/components/client-dashboard.tsx
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState, useEffect, useCallback } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { useToast } from "@/hooks/use-toast"
+import type React from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import {
   Sidebar,
   SidebarContent,
@@ -24,7 +22,7 @@ import {
   SidebarProvider,
   SidebarRail,
   SidebarTrigger,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -32,8 +30,8 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+} from "@/components/ui/breadcrumb";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   LogOut,
   MapPin,
@@ -49,15 +47,39 @@ import {
   Utensils,
   Star,
   Search,
-} from "lucide-react"
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Client as StompClient, IMessage } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-const BASE_URL = "http://localhost:8080/api"
+
+const BASE_URL = "http://localhost:8080/api";
+const BASE_URL_WS = "ws://localhost:8080/ws"; 
+// URL para SockJS deve usar http:// ou https://
+const BASE_URL_SOCKJS_HTTP = "http://localhost:8080/ws"; 
 
 interface RestaurantTableDTO {
   id: number;
   number: number;
   status: "AVAILABLE" | "OCCUPIED" | "RESERVED";
   capacity: number;
+  orders?: OrderDTO[]; 
 }
 
 interface MenuItemDTO {
@@ -68,6 +90,7 @@ interface MenuItemDTO {
   imageUrl?: string;
   category: "APPETIZERS" | "MAIN_COURSES" | "DESSERTS" | "DRINKS";
   drinkType?: "WATER" | "SODA" | "NATURAL_JUICE" | "BEER" | "WINE" | "COCKTAIL";
+  available?: boolean;
 }
 
 interface OrderDTO {
@@ -78,11 +101,11 @@ interface OrderDTO {
   userName: string;
   items: OrderItemDTO[];
   createdAt: string;
-  status: "OPEN" | "UNPAID" | "PAID";
+  status: "DRAFT" | "OPEN" | "UNPAID" | "PAID";
   totalValue: number;
   paymentMethod?: "CASH" | "CARD" | "PIX";
   closedAt?: string;
-  reservedTime?: string; // Incluir reservedTime no OrderDTO do frontend
+  reservedTime?: string;
 }
 
 interface OrderItemDTO {
@@ -103,14 +126,15 @@ interface AuthResponseData {
   fullName: string;
   role: string;
   message: string;
-  cpf?: string;
+  cpf?: string; 
 }
 
 interface ClientDashboardProps {
-  cpf: string;
+  cpf: string; 
   fullName: string;
   authToken: string;
-  onLogout: () => void;
+  onLogout: () => void; 
+  currentUserData: AuthResponseData | null;
 }
 
 const getCategoryDisplayName = (category: string): string => {
@@ -129,10 +153,10 @@ function PageLayout({
   breadcrumbs,
   actions,
 }: {
-  children: React.ReactNode
-  title: string
-  breadcrumbs?: { label: string; href?: string }[]
-  actions?: React.ReactNode
+  children: React.ReactNode;
+  title: string;
+  breadcrumbs?: { label: string; href?: string }[];
+  actions?: React.ReactNode;
 }) {
   return (
     <SidebarInset>
@@ -180,7 +204,7 @@ function PageLayout({
         </div>
       </main>
     </SidebarInset>
-  )
+  );
 }
 
 function EnhancedCard({
@@ -190,41 +214,43 @@ function EnhancedCard({
   className = "",
   ...props
 }: {
-  children: React.ReactNode
-  status?: "AVAILABLE" | "OCCUPIED" | "RESERVED" | "PENDING" | "PREPARING" | "READY"
-  priority?: "low" | "normal" | "high" | "urgent"
-  className?: string
+  children: React.ReactNode;
+  status?: "AVAILABLE" | "OCCUPIED" | "RESERVED" | "PENDING" | "PREPARING" | "READY" | "DRAFT";
+  priority?: "low" | "normal" | "high" | "urgent";
+  className?: string;
 } & React.ComponentProps<typeof Card>) {
   const getStatusStyles = () => {
     switch (status) {
       case "AVAILABLE":
-        return "border-green-200 bg-green-50/50 hover:bg-green-50"
+        return "border-green-200 bg-green-50/50 hover:bg-green-50";
       case "OCCUPIED":
-        return "border-red-200 bg-red-50/50 hover:bg-red-50"
+        return "border-red-200 bg-red-50/50 hover:bg-red-50";
       case "RESERVED":
-        return "border-amber-200 bg-amber-50/50 hover:bg-amber-50"
+        return "border-amber-200 bg-amber-50/50 hover:bg-amber-50";
+      case "DRAFT":
+        return "border-blue-200 bg-blue-50/50 hover:bg-blue-50";
       case "PENDING":
-        return "border-orange-200 bg-orange-50/50 hover:bg-orange-50"
+        return "border-orange-200 bg-orange-50/50 hover:bg-orange-50";
       case "PREPARING":
-        return "border-blue-200 bg-blue-50/50 hover:bg-blue-50"
+        return "border-purple-200 bg-purple-50/50 hover:bg-purple-50";
       case "READY":
-        return "border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50"
+        return "border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50";
       default:
-        return "border-gray-200 hover:bg-gray-50/50"
+        return "border-gray-200 hover:bg-gray-50/50";
     }
-  }
+  };
 
   const getPriorityIndicator = () => {
-    if (!priority || priority === "normal") return null
+    if (!priority || priority === "normal") return null;
 
     const colors = {
       low: "bg-gray-400",
       high: "bg-amber-400",
       urgent: "bg-red-500 animate-pulse",
-    }
+    };
 
-    return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full ${colors[priority]}`} />
-  }
+    return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full ${colors[priority]}`} />;
+  };
 
   return (
     <Card
@@ -238,24 +264,33 @@ function EnhancedCard({
       {getPriorityIndicator()}
       {children}
     </Card>
-  )
+  );
 }
 
-export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: ClientDashboardProps) {
-  const { toast } = useToast()
-  const [selectedItems, setSelectedItems] = useState<OrderItemDTO[]>([])
-  const [reservedTable, setReservedTable] = useState<number | null>(null)
-  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null)
-  const [reservationTime, setReservationTime] = useState<string>("")
-  const [comandaFinalized, setComandaFinalized] = useState(false)
-  const [orderStatus, setOrderStatus] = useState<string>("")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("all")
-  const [activeView, setActiveView] = useState("reservas")
+// --- COMPONENTE CLIENTDASHBOARD PRINCIPAL ---
+export default function ClientDashboard({ cpf, fullName, authToken, onLogout, currentUserData }: ClientDashboardProps) {
+  const { toast } = useToast();
+  const [selectedItems, setSelectedItems] = useState<OrderItemDTO[]>([]);
+  const [reservedTable, setReservedTable] = useState<number | null>(null);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [reservationTime, setReservationTime] = useState<string>("");
+  const [comandaFinalized, setComandaFinalized] = useState(false);
+  const [orderStatus, setOrderStatus] = useState<string>(""); 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [activeView, setActiveView] = useState("reservas");
 
-  const [availableTables, setAvailableTables] = useState<RestaurantTableDTO[]>([])
-  const [menuCategories, setMenuCategories] = useState<{ [key: string]: MenuItemDTO[] }>({})
-  const [comandaHistory, setComandaHistory] = useState<OrderDTO[]>([])
+  const [availableTables, setAvailableTables] = useState<RestaurantTableDTO[]>([]);
+  const [menuCategories, setMenuCategories] = useState<{ [key: string]: MenuItemDTO[] }>({});
+  const [comandaHistory, setComandaHistory] = useState<OrderDTO[]>([]);
+
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  const stompClient = useRef<StompClient | null>(null);
+
+
+  // --- FUNÇÕES DE FETCH DE DADOS ---
 
   const fetchAvailableTables = useCallback(async () => {
     try {
@@ -272,9 +307,8 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
             const errorJson = JSON.parse(errorText);
             errorMessage = errorJson.error || errorJson.message || errorMessage;
         } catch (e) {
-            // Se não for JSON, use a mensagem padrão ou log a resposta bruta
         }
-        throw new Error(errorMessage);
+        throw new Error(errorMessage); 
       }
       const data: RestaurantTableDTO[] = await response.json();
       setAvailableTables(data);
@@ -284,18 +318,13 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
         description: error.message || "Não foi possível carregar as mesas disponíveis.",
         variant: "destructive",
       });
+      throw error; 
     }
   }, [authToken, toast]);
 
   const fetchMenuItems = useCallback(async () => {
     try {
-      const response = await fetch(`${BASE_URL}/menu`, {
-        headers: {
-          // O endpoint /api/menu é publico. Não precisa de token.
-          // Se for necessário, descomente a linha abaixo e garanta que o backend está configurado.
-          // "Authorization": `Bearer ${authToken}`,
-        },
-      });
+      const response = await fetch(`${BASE_URL}/menu`, {}); 
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Erro ao carregar cardápio (raw response):", errorText);
@@ -304,13 +333,13 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
             const errorJson = JSON.parse(errorText);
             errorMessage = errorJson.error || errorJson.message || errorMessage;
         } catch (e) {
-            // Se não for JSON, use a mensagem padrão ou log a resposta bruta
         }
         throw new Error(errorMessage);
       }
       const data: MenuItemDTO[] = await response.json();
+      const activeItems = data.filter(item => item.available !== false); 
       const grouped: { [key: string]: MenuItemDTO[] } = {};
-      data.forEach(item => {
+      activeItems.forEach(item => {
         const categoryName = getCategoryDisplayName(item.category);
         if (!grouped[categoryName]) {
           grouped[categoryName] = [];
@@ -324,16 +353,27 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
         description: error.message || "Não foi possível carregar os itens do cardápio.",
         variant: "destructive",
       });
+      throw error;
     }
   }, [toast]);
 
   const fetchClientOrders = useCallback(async () => {
+    if (!cpf) {
+        console.warn("CPF do usuário não disponível. Não foi possível buscar o histórico de pedidos.");
+        setComandaHistory([]);
+        return;
+    }
     try {
-      const response = await fetch(`${BASE_URL}/client/orders`, {
+      const response = await fetch(`${BASE_URL}/client/orders`, { 
         headers: {
           "Authorization": `Bearer ${authToken}`,
         },
       });
+      // Importante: Não lançar erro para 404 se a ausência de pedidos é esperada
+      if (response.status === 404) {
+          setComandaHistory([]);
+          return;
+      }
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Erro ao carregar histórico (raw response):", errorText);
@@ -342,7 +382,6 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
             const errorJson = JSON.parse(errorText);
             errorMessage = errorJson.error || errorJson.message || errorMessage;
         } catch (e) {
-            // Se a resposta não for um JSON válido, usamos a mensagem padrão ou a raw response.
         }
         throw new Error(errorMessage);
       }
@@ -354,18 +393,229 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
         description: error.message || "Não foi possível carregar o histórico de pedidos.",
         variant: "destructive",
       });
+      throw error;
     }
-  }, [authToken, toast]);
+  }, [authToken, toast, cpf]);
 
-  useEffect(() => {
-    if (authToken) {
-      fetchAvailableTables();
-      fetchMenuItems();
-      fetchClientOrders();
+
+  // Função para buscar todos os dados iniciais necessários (removido fetchClientCurrentDraftOrder)
+  const fetchInitialData = useCallback(async () => {
+    if (!authToken || !cpf) {
+      console.warn("Token de autenticação ou CPF ausente. Não é possível carregar dados iniciais.");
+      setDashboardLoading(false); 
+      setDashboardError("Erro de autenticação. Por favor, faça login novamente.");
+      return;
     }
-  }, [authToken, fetchAvailableTables, fetchMenuItems, fetchClientOrders]);
+    setDashboardLoading(true);
+    setDashboardError(null);
+    try {
+      await Promise.all([
+        fetchAvailableTables(),
+        fetchMenuItems(),
+        fetchClientOrders(),
+        // REMOVIDO: fetchClientCurrentDraftOrder(), 
+      ]);
+    } catch (error) {
+      console.error("Erro geral ao buscar dados iniciais:", error);
+      setDashboardError("Ocorreu um problema ao carregar os dados iniciais. Tente novamente.");
+      toast({
+        title: "Erro de conexão",
+        description: "Ocorreu um problema ao carregar os dados. Verifique sua conexão e tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [authToken, cpf, fetchAvailableTables, fetchMenuItems, fetchClientOrders, toast]);
+
+// Substitua a função connectWebSocket por esta versão atualizada
+const connectWebSocket = useCallback(() => {
+  if (!authToken || !cpf) { 
+    console.log('Skipping WebSocket connection for client (missing auth).');
+    if (stompClient.current?.connected) { 
+      stompClient.current.deactivate();
+      stompClient.current = null;
+    }
+    return () => {};
+  }
+
+  if (stompClient.current && stompClient.current.connected) {
+    return () => {};
+  }
+
+  const client = new StompClient({
+    brokerURL: BASE_URL_WS, // Use 'ws://' aqui para o brokerURL do StompClient
+    connectHeaders: {
+      'Authorization': `Bearer ${authToken}`
+    },
+    debug: (str) => {
+      console.log('STOMP Debug (Client):', str);
+    },
+    reconnectDelay: 5000, 
+    heartbeatIncoming: 4000, 
+    heartbeatOutgoing: 4000, 
+    onConnect: (frame) => {
+      console.log('Cliente conectado ao WebSocket! Frame:', frame);
+      stompClient.current = client;
+
+// Dentro da função connectWebSocket
+      client.subscribe('/topic/tables', (message: IMessage) => {
+          const updatedTable: RestaurantTableDTO = JSON.parse(message.body);
+          console.log('Cliente: Status de mesa atualizado via WS:', updatedTable);
+          console.log('Status da mesa recebida (do WS):', updatedTable.status); 
+
+          setAvailableTables(prevTables => {
+              const tableIndex = prevTables.findIndex(t => t.id === updatedTable.id);
+              let newTables;
+
+              if (tableIndex > -1) {
+                  // Se a mesa já existe, cria um novo array com a mesa atualizada
+                  newTables = prevTables.map((t, index) =>
+                      index === tableIndex ? updatedTable : t
+                  );
+              } else {
+                  // Se a mesa NÃO existe e o status é 'AVAILABLE', ADICIONA ela.
+                  // Se ela não existe e o status não é 'AVAILABLE' (ex: virou 'OCCUPIED' do nada sem ter sido vista antes),
+                  // podemos ignorar ou decidir como lidar. Para 'AVAILABLE', a adicionamos.
+                  if (updatedTable.status?.toUpperCase() === "AVAILABLE") {
+                      newTables = [...prevTables, updatedTable]; // Adiciona a nova mesa
+                  } else {
+                      newTables = [...prevTables]; // Não adiciona se não for 'AVAILABLE' e for nova
+                  }
+              }
+              
+              console.log('Array de mesas APÓS atualização no estado (deveria conter a mesa atualizada):', newTables); 
+              const mesaAtualizadaNoEstado = newTables.find(t => t.id === updatedTable.id);
+              if (mesaAtualizadaNoEstado) {
+                  console.log(`Mesa ${mesaAtualizadaNoEstado.id} no NOVO ESTADO: status=${mesaAtualizadaNoEstado.status}`);
+              }
+
+              return newTables; 
+          });
+      });
+
+      client.subscribe('/topic/orders', (message: IMessage) => {
+        const updatedOrder: OrderDTO = JSON.parse(message.body);
+        console.log('Cliente: Atualização de Pedido via WS:', updatedOrder);
+        // Atualiza o estado da comanda atual se for o pedido do cliente
+        setCurrentOrderId(prevOrderId => { // Usa a forma de função para garantir o ID mais recente
+            if (prevOrderId === updatedOrder.id) {
+                setSelectedItems(updatedOrder.items);
+                setOrderStatus(updatedOrder.status);
+                setComandaFinalized(updatedOrder.status !== "DRAFT" && updatedOrder.status !== "OPEN");
+                setReservedTable(updatedOrder.tableId);
+                setReservationTime(updatedOrder.reservedTime || "");
+            }
+            return prevOrderId; 
+        });
+        // Atualiza o histórico de pedidos (adiciona novo ou atualiza existente)
+        setComandaHistory(prevHistory => {
+            const index = prevHistory.findIndex(o => o.id === updatedOrder.id);
+            if (index > -1) {
+                return prevHistory.map((o, idx) => idx === index ? updatedOrder : o);
+            } else {
+                return [...prevHistory, updatedOrder]; 
+            }
+        });
+      });
+
+      client.subscribe('/topic/order-items', (message: IMessage) => {
+        const updatedItem: OrderItemDTO = JSON.parse(message.body);
+        console.log('Cliente: Atualização de Item de Pedido via WS:', updatedItem);
+        // Se o item de pedido atualizado pertence ao pedido ativo do cliente
+        if (currentOrderId && updatedItem.orderId === currentOrderId) {
+            setSelectedItems(prevItems => {
+                const index = prevItems.findIndex(i => i.id === updatedItem.id);
+                if (index > -1) {
+                    return prevItems.map((item, idx) => idx === index ? updatedItem : item);
+                } else {
+                    return [...prevItems, updatedItem]; // Adiciona um novo item (se foi adicionado por outro cliente na mesma comanda)
+                }
+            });
+        }
+      });
+
+      client.subscribe('/topic/menu', (message: IMessage) => {
+        const updatedItem: MenuItemDTO = JSON.parse(message.body);
+        console.log('Cliente: Atualização de Menu via WS:', updatedItem);
+        // Atualiza as categorias de menu e os itens.
+        setMenuCategories(prevCategories => {
+            const newCategories = { ...prevCategories };
+            for (const categoryName in newCategories) {
+                newCategories[categoryName] = newCategories[categoryName].map(item =>
+                    item.id === updatedItem.id ? updatedItem : item
+                );
+            }
+            return newCategories;
+        });
+        // Remove itens do selectedItems se eles se tornarem indisponíveis
+        setSelectedItems(prevItems => prevItems.filter(item => {
+            // Encontra o item de menu correspondente para verificar a disponibilidade
+            const correspondingMenuItem = Object.values(menuCategories).flat().find(menuIt => menuIt.id === item.menuItemId);
+            // Se o item de menu foi atualizado e está indisponível, remove da comanda
+            if (correspondingMenuItem && correspondingMenuItem.id === updatedItem.id && updatedItem.available === false) {
+                toast({ title: "Item Indisponível", description: `O item "${item.menuItemName}" não está mais disponível e foi removido da sua comanda.`, variant: "destructive" });
+                return false; // Remove este item
+            }
+            return true; // Mantém este item
+        }));
+      });
+    },
+    onStompError: (frame) => {
+      console.error('STOMP Error (Client):', frame.headers['message'], frame.body);
+      toast({
+        title: "Erro no WebSocket",
+        description: `Problema na conexão: ${frame.headers['message']}`,
+        variant: "destructive",
+      });
+    },
+    onWebSocketError: (error) => {
+      console.error('WebSocket Error:', error);
+      toast({
+        title: "Erro na conexão WebSocket",
+        description: "Não foi possível conectar ao servidor em tempo real. Tentando reconectar...",
+        variant: "destructive",
+      });
+    },
+    onDisconnect: () => {
+      console.log('Cliente desconectado do WebSocket.');
+      stompClient.current = null;
+    }
+  });
+
+  // Use BASE_URL_SOCKJS_HTTP (com http://) para o SockJS
+  client.webSocketFactory = () => new SockJS(BASE_URL_SOCKJS_HTTP) as unknown as import('@stomp/stompjs').IStompSocket;
+
+  client.activate(); 
+  stompClient.current = client;
+
+  return () => {
+    if (stompClient.current?.connected) {
+      stompClient.current.deactivate();
+      console.log('Client WebSocket deactivated via cleanup.');
+      stompClient.current = null;
+    }
+  };
+}, [authToken, cpf, toast, currentOrderId, setComandaHistory, setSelectedItems, setOrderStatus, setComandaFinalized, setAvailableTables, setMenuCategories]);
+
+
+  // Efeito para carregar dados iniciais e conectar ao WebSocket
+  useEffect(() => {
+    if (authToken && cpf) {
+      fetchInitialData();
+      const disconnectWs = connectWebSocket(); 
+      return () => {
+        if (disconnectWs) disconnectWs(); 
+      };
+    } else {
+      setDashboardLoading(false); 
+      setDashboardError("Autenticação necessária para carregar o dashboard.");
+    }
+  }, [authToken, cpf, fetchInitialData, connectWebSocket]);
+
 
   const formatCpfDisplay = (value: string) => {
+    if (!value) return "N/A";
     const numbers = value.replace(/\D/g, "");
     if (numbers.length <= 3) return numbers;
     if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
@@ -375,64 +625,213 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
 
 
   const handleCategorySelect = (category: string) => {
-    setSelectedCategory(category)
-  }
+    setSelectedCategory(category);
+  };
 
-  const addToComanda = (item: MenuItemDTO) => {
-    if (!reservedTable || currentOrderId === null) {
+  const addToComanda = async (item: MenuItemDTO) => {
+    if (!currentUserData || !currentUserData.cpf) {
+        toast({ title: "Erro de Perfil", description: "Dados do usuário não carregados. Tente recarregar ou relogar.", variant: "destructive" });
+        return;
+    }
+
+    if (!reservedTable && !currentOrderId) { // Ajustado para verificar currentOrderId também
       toast({
-        title: "Reserve uma mesa e inicie um pedido",
-        description: "Você precisa reservar uma mesa e ter um pedido ativo antes de adicionar itens.",
+        title: "Reserve uma mesa ou inicie um pedido",
+        description: "Você precisa reservar ou selecionar uma mesa para iniciar um pedido.",
         variant: "destructive",
       });
       return;
     }
 
-    const existingItemIndex = selectedItems.findIndex((i) => i.menuItemId === item.id);
-
-    if (existingItemIndex > -1) {
-      const updatedItems = [...selectedItems];
-      updatedItems[existingItemIndex].quantity += 1;
-      setSelectedItems(updatedItems);
-    } else {
-      const newItem: OrderItemDTO = {
-        orderId: currentOrderId,
-        menuItemId: item.id,
-        menuItemName: item.name,
-        unitPrice: item.price,
-        quantity: 1,
-      };
-      setSelectedItems([...selectedItems, newItem]);
+    if (item.available === false) {
+      toast({ title: "Item Indisponível", description: `${item.name} não está disponível no momento.`, variant: "destructive" });
+      return;
     }
 
-    toast({
-      title: "Item adicionado! 🍽️",
-      description: `${item.name} foi adicionado à sua comanda.`,
-    });
-  };
+    let orderIdToUse = currentOrderId;
+
+    if (!orderIdToUse) { // Se não há um pedido atual (id), criar um (assumindo que a reserva não criou um automaticamente ou já está fechado)
+      if (!reservedTable) {
+        toast({ title: "Mesa não selecionada", description: "Selecione uma mesa para iniciar o pedido.", variant: "destructive" });
+        return;
+      }
+      try {
+        const createOrderResponse = await fetch(`${BASE_URL}/orders/create-draft`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            tableId: reservedTable,
+            userCpf: cpf, 
+          }),
+        });
+
+        if (!createOrderResponse.ok) {
+          const errorData = await createOrderResponse.json();
+          throw new Error(errorData.message || "Erro ao criar o pedido principal.");
+        }
+        const newOrder = await createOrderResponse.json();
+        orderIdToUse = newOrder.id;
+        setCurrentOrderId(newOrder.id);
+        setReservedTable(newOrder.tableId); 
+        setReservationTime(newOrder.reservedTime || "");
+        setComandaFinalized(false); // Novo pedido não está finalizado
+        setOrderStatus(newOrder.status);
+        toast({ title: "Pedido Iniciado!", description: `Sua comanda na mesa ${newOrder.tableName} foi iniciada.` });
+      } catch (error: any) {
+        toast({ title: "Erro ao iniciar pedido", description: error.message || "Ocorreu um erro ao iniciar o pedido.", variant: "destructive" });
+        return;
+      }
+    }
+
+    if (!orderIdToUse) { // Última verificação se o ID do pedido foi estabelecido
+        toast({ title: "Erro Interno", description: "Não foi possível obter um pedido ativo para adicionar itens.", variant: "destructive" });
+        return;
+    }
+
+    const existingItemInSelectedItems = selectedItems.find((i) => i.menuItemId === item.id);
+    let newQuantity = 1;
+    if (existingItemInSelectedItems) {
+        newQuantity = existingItemInSelectedItems.quantity + 1;
+    }
+
+    try {
+        const addUpdateItemResponse = await fetch(`${BASE_URL}/order-items?orderId=${orderIdToUse}`, { // Usa orderIdToUse
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`,
+            },
+            body: JSON.stringify({
+                menuItemId: item.id,
+                quantity: newQuantity,
+            }),
+        });
+
+        if (!addUpdateItemResponse.ok) {
+            const errorData = await addUpdateItemResponse.json();
+            throw new Error(errorData.message || `Falha ao adicionar/atualizar "${item.name}" na comanda.`);
+        }
+
+        const updatedOrderItem: OrderItemDTO = await addUpdateItemResponse.json();
+        // O WS deve atualizar, mas podemos forçar a atualização dos selectedItems
+        setSelectedItems(prevItems => {
+            const index = prevItems.findIndex(i => i.menuItemId === updatedOrderItem.menuItemId);
+            if (index > -1) {
+                return prevItems.map((i, idx) => idx === index ? { ...i, quantity: updatedOrderItem.quantity, totalPrice: updatedOrderItem.totalPrice, id: updatedOrderItem.id } : i);
+            } else {
+                return [...prevItems, updatedOrderItem];
+            }
+        });
 
 
-  const updateQuantity = (menuItemId: number, change: number) => {
-    setSelectedItems((items) =>
-      items
-        .map((item) => {
-          if (item.menuItemId === menuItemId) {
-            const newQuantity = item.quantity + change;
-            return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
-          }
-          return item;
-        })
-        .filter((item) => item.quantity > 0)
-    );
+        toast({
+            title: "Item adicionado/atualizado! 🍽️",
+            description: `${item.name} (x${newQuantity}) adicionado à sua comanda.`,
+        });
+
+    } catch (error: any) {
+        toast({
+            title: "Erro ao adicionar item",
+            description: error.message || "Ocorreu um erro ao adicionar item à comanda.",
+            variant: "destructive",
+        });
+    }
   };
 
-  const removeFromComanda = (menuItemId: number) => {
-    setSelectedItems((items) => items.filter((item) => item.menuItemId !== menuItemId));
-    toast({
-      title: "Item removido",
-      description: "Item removido da comanda.",
-    });
+  const updateQuantity = async (menuItemId: number, change: number) => {
+    if (!currentOrderId || comandaFinalized) return; // Depende de currentOrderId
+
+    const itemToUpdate = selectedItems.find((item) => item.menuItemId === menuItemId);
+    if (!itemToUpdate || !itemToUpdate.id) {
+        toast({ title: "Erro", description: "ID do item de pedido não encontrado para atualização de quantidade.", variant: "destructive" });
+        return;
+    }
+
+    const newQuantity = itemToUpdate.quantity + change;
+
+    if (newQuantity <= 0) {
+      await removeFromComanda(menuItemId);
+      return;
+    }
+
+    try {
+        const response = await fetch(`${BASE_URL}/order-items/${itemToUpdate.id}/quantity?quantity=${newQuantity}`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Erro ao atualizar quantidade do item.");
+        }
+
+        const updatedOrderItem: OrderItemDTO = await response.json();
+        // Atualização otimista ou via WS
+        setSelectedItems((prevItems) =>
+            prevItems.map((item) =>
+                item.menuItemId === menuItemId ? { ...item, quantity: updatedOrderItem.quantity, totalPrice: updatedOrderItem.totalPrice } : item // Assegura que o totalPrice é atualizado
+            )
+        );
+
+        toast({
+            title: "Quantidade atualizada",
+            description: `${itemToUpdate.menuItemName} agora tem ${newQuantity} unidades.`,
+        });
+        
+    } catch (error: any) {
+        toast({
+            title: "Erro ao atualizar quantidade",
+            description: error.message || "Ocorreu um erro ao atualizar a quantidade do item.",
+            variant: "destructive",
+        });
+    }
   };
+
+  const removeFromComanda = async (menuItemId: number) => {
+    if (!currentOrderId || comandaFinalized) return; // Depende de currentOrderId
+
+    const itemToRemove = selectedItems.find((item) => item.menuItemId === menuItemId);
+    if (!itemToRemove || !itemToRemove.id) {
+      toast({ title: "Erro", description: "Item não encontrado na comanda.", variant: "destructive" });
+      return;
+    }
+
+    try {
+        const response = await fetch(`${BASE_URL}/order-items/${itemToRemove.id}`, {
+            method: "DELETE",
+            headers: {
+                "Authorization": `Bearer ${authToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Erro ao remover item da comanda.");
+        }
+
+        // Atualização otimista ou via WS
+        setSelectedItems((prevItems) => prevItems.filter((item) => item.menuItemId !== menuItemId));
+
+        toast({
+            title: "Item removido",
+            description: `${itemToRemove.menuItemName} removido da comanda.`,
+        });
+
+    } catch (error: any) {
+        toast({
+            title: "Erro ao remover item",
+            description: error.message || "Ocorreu um erro ao remover item da comanda.",
+            variant: "destructive",
+        });
+    }
+  };
+
 
   const reserveTable = async (tableId: number, tableNumber: number, time: string) => {
     if (!time) {
@@ -462,12 +861,15 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
       setCurrentOrderId(reservedOrder.id);
       setReservedTable(tableNumber);
       setReservationTime(time);
-      setActiveView("cardapio");
+      setComandaFinalized(false); // Nova reserva, comanda não está finalizada
+      setOrderStatus(reservedOrder.status); // Atualiza status da comanda
+      setActiveView("cardapio"); // Navega para o cardápio após a reserva
       toast({
         title: "Mesa Reservada! 🎉",
         description: `Mesa ${tableNumber} reservada para ${time}. Agora você pode fazer seus pedidos!`,
       });
-      fetchAvailableTables();
+      fetchAvailableTables(); 
+      fetchClientOrders(); // Para atualizar histórico de pedidos
     } catch (error: any) {
       toast({
         title: "Erro na Reserva",
@@ -479,7 +881,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
 
 
   const finalizeOrder = async () => {
-    if (!currentOrderId || selectedItems.length === 0) {
+    if (!currentOrderId || selectedItems.length === 0 || comandaFinalized) { // Depende de currentOrderId
       toast({
         title: "Nenhum item para enviar",
         description: "Adicione itens à comanda antes de finalizar o pedido.",
@@ -488,72 +890,74 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
       return;
     }
 
+    // Assumimos que o status do pedido em currentOrderId é DRAFT antes de finalizar
+    // Se precisar verificar o status real, precisaria de uma fetch avulsa ou que
+    // currentClientOrder fosse mantido e atualizado.
+    // Como removemos currentClientOrder, dependemos do WS para atualização.
+
     try {
-      const itemsPayload = selectedItems.map(item => ({
-        menuItemId: item.menuItemId,
-        quantity: item.quantity,
-      }));
+        const response = await fetch(`${BASE_URL}/orders/${currentOrderId}/confirm`, { // Usa currentOrderId
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${authToken}`,
+            },
+        });
 
-      const addItemsResponse = await fetch(`${BASE_URL}/client/order/${currentOrderId}/items`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(itemsPayload),
-      });
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = "Erro ao enviar o pedido para a cozinha.";
+            try {
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.message || errorMessage;
+            } catch (e) {
+                errorMessage = errorText || errorMessage;
+            }
+            throw new Error(errorMessage);
+        }
 
-      if (!addItemsResponse.ok) {
-        const errorData = await addItemsResponse.json();
-        throw new Error(errorData.message || "Erro ao adicionar itens ao pedido.");
-      }
+        const confirmedOrder: OrderDTO = await response.json();
+        // A atualização de `currentClientOrder` e `selectedItems` deve vir via WebSocket
+        setComandaFinalized(true); 
+        setOrderStatus(confirmedOrder.status);
+        toast({ title: "Pedido Enviado! 🍽️", description: "Seu pedido foi enviado para a cozinha e está sendo preparado." });
 
-      setComandaFinalized(true);
-      setOrderStatus("preparing");
-      toast({
-        title: "Pedido enviado! 🍽️",
-        description: "Seu pedido foi enviado para a cozinha e está sendo preparado.",
-        duration: 5000,
-      });
-
-      setSelectedItems([]);
-      fetchClientOrders();
     } catch (error: any) {
-      toast({
-        title: "Erro ao finalizar pedido",
-        description: error.message || "Ocorreu um erro ao tentar finalizar o pedido.",
-        variant: "destructive",
-      });
+        toast({ title: "Erro ao finalizar pedido", description: error.message || "Ocorreu um erro ao tentar finalizar o pedido.", 
+          variant: "destructive",
+        });
     }
   };
 
   const generateTimeSlots = () => {
-    const slots = []
+    const slots = [];
     for (let hour = 18; hour <= 23; hour++) {
       for (let minute = 0; minute < 60; minute += 30) {
-        const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
-        slots.push(timeString)
+        const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+        slots.push(timeString);
       }
     }
-    return slots
-  }
+    return slots;
+  };
 
   const filteredMenuItems = () => {
     const allItems: (MenuItemDTO & { popular?: boolean; rating?: number })[] = Object.values(menuCategories).flat().map((item) => ({
       ...item,
-      popular: Math.random() > 0.7,
+      popular: Math.random() > 0.7, 
       rating: parseFloat((Math.random() * 1 + 4).toFixed(1)),
-    }));
+    })).filter(item => item.available !== false);
+
 
     return allItems.filter((item) => {
       const matchesSearch =
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()));
       const matchesCategory = selectedCategory === "all" || getCategoryDisplayName(item.category) === selectedCategory;
       return matchesSearch && matchesCategory;
     });
   };
 
+  // Como currentClientOrder foi removido, o total da comanda será calculado apenas dos selectedItems
   const currentComandaTotal = selectedItems.reduce((sum, item) => sum + (item.unitPrice || 0) * item.quantity, 0);
 
   const navigationItems = [
@@ -588,27 +992,49 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
   ];
 
   const getBreadcrumbs = () => {
-    const breadcrumbs = [{ label: "TableMaster" }]
+    const breadcrumbs = [{ label: "TableMaster" }];
 
     switch (activeView) {
       case "reservas":
-        breadcrumbs.push({ label: "Reservas" })
-        break
+        breadcrumbs.push({ label: "Reservas" });
+        break;
       case "cardapio":
-        breadcrumbs.push({ label: "Cardápio" })
-        break
+        breadcrumbs.push({ label: "Cardápio" });
+        break;
       case "comanda":
-        breadcrumbs.push({ label: "Minha Comanda" })
-        break
+        breadcrumbs.push({ label: "Minha Comanda" });
+        break;
       case "historico":
-        breadcrumbs.push({ label: "Histórico" })
-        break
+        breadcrumbs.push({ label: "Histórico" });
+        break;
     }
 
-    return breadcrumbs
-  }
+    return breadcrumbs;
+  };
 
   const renderContent = () => {
+    if (dashboardLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full min-h-[500px]">
+                <Clock className="h-24 w-24 text-emerald-300 animate-spin mb-6" />
+                <h2 className="text-xl font-semibold text-emerald-700">Carregando Dashboard...</h2>
+                <p className="text-emerald-500">Isso pode levar alguns segundos.</p>
+            </div>
+        );
+    }
+
+    if (dashboardError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-red-500">
+                <div className="p-4 bg-red-100 border border-red-400 rounded-lg text-center">
+                    <h2 className="text-xl font-semibold mb-2">Ops! Ocorreu um erro:</h2>
+                    <p>{dashboardError}</p>
+                    <Button onClick={fetchInitialData} className="mt-4 bg-red-600 hover:bg-red-700 text-white">Tentar Recarregar</Button>
+                </div>
+            </div>
+        );
+    }
+    
     switch (activeView) {
       case "reservas":
         return (
@@ -624,15 +1050,17 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setReservedTable(null)
-                      setReservationTime("")
+                      setReservedTable(null);
+                      setReservationTime("");
                       setCurrentOrderId(null);
-                      fetchAvailableTables();
-                      setSelectedItems([])
+                      setSelectedItems([]); // Limpa itens da comanda ao cancelar reserva
+                      setComandaFinalized(false);
+                      setOrderStatus("");
+                      fetchAvailableTables(); 
                       toast({
                         title: "Reserva cancelada",
                         description: "Mesa liberada com sucesso.",
-                      })
+                      });
                     }}
                     className="border-emerald-600 text-emerald-700 hover:bg-emerald-100"
                   >
@@ -671,7 +1099,8 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {availableTables
-                    .filter((table) => table.status === "AVAILABLE")
+                    // AQUI É A ÚLTIMA GRANDE CORREÇÃO: Garante que o status é comparado corretamente em caixa alta
+                    .filter((table) => table.status?.toUpperCase() === "AVAILABLE")
                     .map((table) => (
                       <EnhancedCard key={table.id} status="AVAILABLE" className="hover:shadow-lg transition-shadow">
                         <CardHeader>
@@ -699,12 +1128,11 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
               </div>
             )}
           </div>
-        )
+        );
 
       case "cardapio":
         return (
           <div className="space-y-6">
-            {/* Filtros e Busca */}
             <EnhancedCard>
               <CardContent className="p-4">
                 <div className="flex flex-col md:flex-row gap-4">
@@ -719,7 +1147,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                       />
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap justify-center md:justify-start">
                     <Button
                       variant={selectedCategory === "all" ? "default" : "outline"}
                       onClick={() => setSelectedCategory("all")}
@@ -742,16 +1170,16 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
               </CardContent>
             </EnhancedCard>
 
-            {/* Itens do Cardápio */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredMenuItems().map((item) => {
-                const itemInComanda = selectedItems.find((i) => i.menuItemId === item.id)
+                const itemInComanda = selectedItems.find((i) => i.menuItemId === item.id);
 
                 return (
                   <EnhancedCard
                     key={item.id}
                     className="hover:shadow-lg transition-all duration-200"
                     priority={item.popular ? "high" : "normal"}
+                    status={item.available ? "AVAILABLE" : "PENDING"} 
                   >
                     <CardHeader>
                       <div className="flex justify-between items-start">
@@ -773,12 +1201,6 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                         </Badge>
                       </div>
                       <CardDescription className="text-sm">{item.description}</CardDescription>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center">
-                          <Star className="h-4 w-4 text-amber-400 fill-current" />
-                          <span className="text-sm text-gray-600 ml-1">{item.rating || 'N/A'}</span>
-                        </div>
-                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="flex justify-between items-center mb-4">
@@ -823,7 +1245,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                         <Button
                           onClick={() => addToComanda(item)}
                           className="w-full bg-emerald-800 hover:bg-emerald-700"
-                          disabled={!reservedTable || currentOrderId === null}
+                          disabled={!reservedTable || currentOrderId === null || item.available === false}
                         >
                           <Plus className="h-4 w-4 mr-2" />
                           Adicionar
@@ -831,16 +1253,16 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                       )}
                     </CardContent>
                   </EnhancedCard>
-                )
+                );
               })}
             </div>
           </div>
-        )
+        );
 
       case "comanda":
         return (
           <div className="space-y-6">
-            <EnhancedCard status={comandaFinalized ? "PREPARING" : "PENDING"}>
+            <EnhancedCard status={orderStatus === "DRAFT" ? "DRAFT" : "PREPARING"}> 
               <CardHeader>
                 <CardTitle className="text-emerald-800">
                   Comanda #{currentOrderId?.toString().slice(-4) || "N/A"}
@@ -849,17 +1271,10 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                 </CardTitle>
                 {orderStatus && (
                   <div className="flex items-center gap-2">
-                    {orderStatus === "preparing" ? (
-                      <Badge className="bg-amber-500 text-white">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Sendo Preparado
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-green-500 text-white">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Pronto para Entrega
-                      </Badge>
-                    )}
+                    {orderStatus === "DRAFT" && <Badge className="bg-blue-500 text-white"><Clock className="h-3 w-3 mr-1" /> Rascunho</Badge>}
+                    {orderStatus === "OPEN" && <Badge className="bg-amber-500 text-white"><Clock className="h-3 w-3 mr-1" /> Em Preparo</Badge>}
+                    {orderStatus === "UNPAID" && <Badge className="bg-red-500 text-white"><Clock className="h-3 w-3 mr-1" /> Aguardando Pagamento</Badge>}
+                    {orderStatus === "PAID" && <Badge className="bg-green-500 text-white"><CheckCircle className="h-3 w-3 mr-1" /> Pago</Badge>}
                   </div>
                 )}
               </CardHeader>
@@ -878,7 +1293,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                   <div className="space-y-4">
                     {selectedItems.map((item) => (
                       <div
-                        key={item.menuItemId}
+                        key={item.id || item.menuItemId} 
                         className="flex justify-between items-center p-4 bg-emerald-50 rounded-lg border border-emerald-200"
                       >
                         <div className="flex-1">
@@ -927,7 +1342,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center text-xl font-bold mb-4">
                         <span className="text-emerald-800">Total:</span>
-                        <span className="text-amber-600">R$ {currentComandaTotal.toFixed(2)}</span>
+                        <span className="font-bold text-amber-600">R$ {currentComandaTotal.toFixed(2)}</span>
                       </div>
                       <Button
                         onClick={finalizeOrder}
@@ -952,7 +1367,7 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
               </CardContent>
             </EnhancedCard>
           </div>
-        )
+        );
 
       case "historico":
         return (
@@ -988,12 +1403,12 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                         ))}
                         <div className="border-t pt-2 flex justify-between font-bold">
                         <span className="text-emerald-800">Total:</span>
-                        <span className="text-amber-600">R$ {comanda.totalValue.toFixed(2)}</span>
+                        <span className="font-bold text-amber-600">R$ {comanda.totalValue.toFixed(2)}</span>
                         </div>
                         {comanda.paymentMethod && (
                             <div className="flex justify-between text-sm text-gray-600">
                                 <span>Método de Pagamento:</span>
-                                <span className="font-medium">{comanda.paymentMethod}</span>
+                                <span>{comanda.paymentMethod}</span>
                             </div>
                         )}
                         <Badge className={comanda.status === "PAID" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
@@ -1005,12 +1420,12 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                 ))
             )}
           </div>
-        )
+        );
 
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   return (
     <TooltipProvider>
@@ -1047,13 +1462,15 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
                             <span className="text-xs text-emerald-600">{reservationTime}</span>
                           </div>
                         )}
-                        {orderStatus && (
+                        {orderStatus && orderStatus !== "DRAFT" && ( 
                           <Badge
                             className={
-                              orderStatus === "preparing" ? "bg-amber-500 text-white" : "bg-green-500 text-white"
+                              orderStatus === "OPEN" || orderStatus === "UNPAID" 
+                              ? "bg-amber-500 text-white" 
+                              : "bg-green-500 text-white" 
                             }
                           >
-                            {orderStatus === "preparing" ? "Preparando" : "Pronto"}
+                            {orderStatus === "OPEN" ? "Enviado" : (orderStatus === "UNPAID" ? "Aguardando Pagamento" : "Pago")}
                           </Badge>
                         )}
                       </div>
@@ -1150,5 +1567,5 @@ export default function ClientDashboard({ cpf, fullName, authToken, onLogout }: 
         </div>
       </SidebarProvider>
     </TooltipProvider>
-  )
+  );
 }

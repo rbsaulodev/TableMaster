@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
@@ -17,5 +18,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByUser(User user);
     List<Order> findByStatusIn(List<OrderStatus> statuses);
     List<Order> findByTableAndStatusIn(RestaurantTable table, List<OrderStatus> statuses);
+    Optional<Order> findByUserCpfAndStatus(String userCpf, OrderStatus status);
+    Optional<Order> findByUserAndStatus(User user, OrderStatus status);
 }
 

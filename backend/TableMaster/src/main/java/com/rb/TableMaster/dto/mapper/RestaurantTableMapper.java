@@ -1,3 +1,4 @@
+// src/main/java/com/rb/TableMaster/dto/mapper/RestaurantTableMapper.java
 package com.rb.TableMaster.dto.mapper;
 
 import com.rb.TableMaster.dto.RestaurantTableDTO;
@@ -5,8 +6,17 @@ import com.rb.TableMaster.model.RestaurantTable;
 import com.rb.TableMaster.model.enums.TableStatus;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.stream.Collectors;
+
 @Component
 public class RestaurantTableMapper {
+
+    private final OrderMapper orderMapper;
+
+    public RestaurantTableMapper(OrderMapper orderMapper) {
+        this.orderMapper = orderMapper;
+    }
 
     public RestaurantTableDTO toDTO(RestaurantTable entity) {
         if (entity == null) {
@@ -18,7 +28,11 @@ public class RestaurantTableMapper {
                 entity.getNumber(),
                 entity.getStatus() != null ? entity.getStatus() : TableStatus.AVAILABLE,
                 entity.getCapacity(),
-                entity.getOrders()
+                entity.getOrders() != null ?
+                        entity.getOrders().stream()
+                                .map(orderMapper::toDTO)
+                                .collect(Collectors.toList())
+                        : Collections.emptyList()
         );
     }
 
@@ -49,6 +63,5 @@ public class RestaurantTableMapper {
         if (dto.capacity() > 0) {
             entity.setCapacity(dto.capacity());
         }
-        // Orders are not updated directly through the table DTO
     }
 }

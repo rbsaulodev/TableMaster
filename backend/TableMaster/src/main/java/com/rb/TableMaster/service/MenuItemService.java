@@ -107,4 +107,16 @@ public class MenuItemService {
         return menuItemRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, MenuItem.class));
     }
+
+    @Transactional
+    public MenuItemDTO toggleMenuItemAvailability(Long id, boolean available) {
+        MenuItem menuItem = menuItemRepository.findById(id)
+                .orElseThrow(() -> new RecordNotFoundException(id, MenuItem.class));
+
+        menuItem.setAvailable(available);
+        MenuItem updatedMenuItem = menuItemRepository.save(menuItem);
+        return menuItemMapper.toDTO(updatedMenuItem);
+    }
+
+
 }

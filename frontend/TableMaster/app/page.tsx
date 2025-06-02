@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react" // Importe useEffect
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,17 +10,72 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { User, Utensils, UserPlus, CheckCircle } from "lucide-react"
 import ClientDashboard from "./components/client-dashboard"
 import { useToast } from "@/hooks/use-toast"
+import { Toaster } from "@/components/ui/toaster" // Importe Toaster aqui para o root layout
 
 const BASE_URL = "http://localhost:8080/api"
 
-export default function TableMaster() {
-  const { toast } = useToast()
-  const [authToken, setAuthToken] = useState<string | null>(null)
-  const [currentUserData, setCurrentUserData] = useState<any>(null) // To store AuthResponseDTO
-  const [activeTab, setActiveTab] = useState("login")
+// Interface para os dados de resposta de autenticação (reproduzida aqui)
+interface AuthResponseData {
+  token: string;
+  username: string;
+  fullName: string;
+  role: string;
+  message: string;
+  cpf?: string;
+}
 
-  const [loginUsername, setLoginUsername] = useState("")
-  const [loginPassword, setLoginPassword] = useState("")
+// --- Funções para gerenciar o token e dados no localStorage ---
+const saveAuthData = (data: AuthResponseData) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('jwt_token', data.token);
+    localStorage.setItem('user_role', data.role);
+    localStorage.setItem('user_full_name', data.fullName);
+    localStorage.setItem('user_username', data.username);
+    localStorage.setItem('user_message', data.message);
+    if (data.cpf) {
+      localStorage.setItem('user_cpf', data.cpf);
+    }
+  }
+};
+
+const getAuthData = (): AuthResponseData | null => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('jwt_token');
+    const role = localStorage.getItem('user_role');
+    const fullName = localStorage.getItem('user_full_name');
+    const username = localStorage.getItem('user_username');
+    const message = localStorage.getItem('user_message');
+    const cpf = localStorage.getItem('user_cpf');
+
+    if (token && role && fullName && username && message) {
+      return { token, role, fullName, username, message, cpf: cpf || undefined };
+    }
+  }
+  return null;
+};
+
+const removeAuthData = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('user_role');
+    localStorage.removeItem('user_full_name');
+    localStorage.removeItem('user_username');
+    localStorage.removeItem('user_message');
+    localStorage.removeItem('user_cpf');
+  }
+};
+// -----------------------------------------------------------------
+
+
+export default function TableMaster() {
+  const { toast } = useToast();
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUserData, setCurrentUserData] = useState<AuthResponseData | null>(null); // Tipado corretamente
+  const [activeTab, setActiveTab] = useState("login");
+  const [loadingAuth, setLoadingAuth] = useState(true); // Novo estado para controlar o carregamento inicial
+
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
 
   const [registerData, setRegisterData] = useState({
     fullName: "",
@@ -28,7 +83,17 @@ export default function TableMaster() {
     username: "",
     password: "",
     email: "",
-  })
+  });
+
+  // Carregar dados de autenticação do localStorage ao iniciar
+  useEffect(() => {
+    const data = getAuthData();
+    if (data && data.token) { // Verifica se há um token
+      setAuthToken(data.token);
+      setCurrentUserData(data);
+    }
+    setLoadingAuth(false); // Marca como carregado
+  }, []);
 
   const handleLogin = async () => {
     if (!loginUsername || !loginPassword) {
@@ -36,8 +101,8 @@ export default function TableMaster() {
         title: "Campos obrigatórios",
         description: "Por favor, digite seu usuário e senha para continuar.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     try {
@@ -47,28 +112,30 @@ export default function TableMaster() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ username: loginUsername, password: loginPassword }),
-      })
+      });
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Erro ao fazer login.")
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Erro ao fazer login.");
       }
 
-      const data = await response.json()
-      setAuthToken(data.token)
-      setCurrentUserData(data)
+      const data: AuthResponseData = await response.json(); // Garante que data é do tipo AuthResponseData
+      
+      saveAuthData(data); // Salva os dados no localStorage
+      setAuthToken(data.token);
+      setCurrentUserData(data);
       toast({
         title: "Login realizado com sucesso! 🎉",
         description: `Bem-vindo(a), ${data.fullName}.`,
-      })
+      });
     } catch (error: any) {
       toast({
         title: "Erro de Login",
         description: error.message || "Ocorreu um erro ao tentar fazer login. Verifique suas credenciais.",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const handleRegister = async () => {
     if (
@@ -82,8 +149,8 @@ export default function TableMaster() {
         title: "Campos obrigatórios",
         description: "Por favor, preencha todos os campos.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     if (registerData.cpf.replace(/\D/g, "").length !== 11) {
@@ -116,62 +183,86 @@ export default function TableMaster() {
           password: registerData.password,
           fullName: registerData.fullName,
           email: registerData.email,
-          role: "CUSTOMER",
+          role: "CUSTOMER", // Garante que o role seja CUSTOMER no registro
         }),
-      })
+      });
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Erro ao registrar usuário.")
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Erro ao registrar usuário.");
       }
 
-      const data = await response.json()
+      // const data = await response.json(); // Resposta de registro pode ser diferente do login
       toast({
         title: "Cadastro realizado com sucesso! 🎉",
         description: "Agora você pode fazer login com seu usuário e senha.",
-      })
-      setLoginUsername(registerData.username)
-      setLoginPassword(registerData.password)
-      setActiveTab("login")
-      setRegisterData({ fullName: "", cpf: "", username: "", password: "", email: "" })
+      });
+      setLoginUsername(registerData.username);
+      setLoginPassword(registerData.password);
+      setActiveTab("login");
+      setRegisterData({ fullName: "", cpf: "", username: "", password: "", email: "" });
     } catch (error: any) {
       toast({
         title: "Erro de Cadastro",
         description: error.message || "Ocorreu um erro ao tentar cadastrar. Tente novamente.",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   const formatCPF = (value: string) => {
-    const numbers = value.replace(/\D/g, "")
-    if (numbers.length <= 3) return numbers
-    if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`
-    if (numbers.length <= 9) return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6)}`
-    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9, 11)}`
-  }
+    if (!value) return "";
+    const numbers = value.replace(/\D/g, "");
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+    if (numbers.length <= 9) return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6)}`;
+    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9, 11)}`;
+  };
 
   const handleLogout = () => {
-    setAuthToken(null)
-    setCurrentUserData(null)
-    setActiveTab("login")
-    setLoginUsername("")
-    setLoginPassword("")
+    removeAuthData(); // Remove os dados do localStorage
+    setAuthToken(null);
+    setCurrentUserData(null);
+    setActiveTab("login");
+    setLoginUsername("");
+    setLoginPassword("");
     toast({
       title: "Logout realizado",
       description: "Você saiu da sua conta.",
-    })
+    });
+  };
+
+  // Se estiver carregando, mostra um spinner ou mensagem
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
+        <div className="flex flex-col items-center">
+            <Utensils className="h-12 w-12 text-emerald-600 animate-pulse" />
+            <p className="mt-4 text-emerald-700">Carregando autenticação...</p>
+        </div>
+        <Toaster />
+      </div>
+    );
   }
 
+  // Se o usuário está autenticado
   if (authToken && currentUserData) {
     if (currentUserData.role === "CUSTOMER") {
-      return <ClientDashboard
-        cpf={formatCPF(currentUserData.cpf)}
-        fullName={currentUserData.fullName}
-        authToken={authToken}
-        onLogout={handleLogout}
-      />
+      // Certifique-se de passar o CPF como string (pode ser vazia se indefinido)
+      return (
+        <>
+          <ClientDashboard
+            cpf={currentUserData.cpf || ""} 
+            fullName={currentUserData.fullName}
+            authToken={authToken}
+            onLogout={handleLogout}
+            currentUserData={currentUserData} // Passa os dados completos
+          />
+          <Toaster /> {/* Renderize o Toaster aqui para o dashboard */}
+        </>
+      );
     }
+    // Se o usuário não é um cliente, mostre a mensagem de acesso negado
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-amber-50">
         <Card>
@@ -183,10 +274,12 @@ export default function TableMaster() {
             <Button onClick={handleLogout}>Voltar ao Login</Button>
           </CardContent>
         </Card>
+        <Toaster /> {/* Renderize o Toaster aqui também */}
       </div>
-    )
+    );
   }
 
+  // Se o usuário não está autenticado, mostre a tela de Login/Cadastro
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-amber-50">
       <header className="bg-white/80 backdrop-blur-sm border-b border-emerald-200 sticky top-0 z-50">
@@ -417,6 +510,7 @@ export default function TableMaster() {
           <p className="text-emerald-100">© 2024 TableMaster - Sistema de Gestão de Restaurante</p>
         </div>
       </footer>
+      <Toaster /> {/* O Toaster precisa estar no componente raiz para ser usado pelos hooks */}
     </div>
-  )
+  );
 }

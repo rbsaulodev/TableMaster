@@ -1,3 +1,4 @@
+// src/app/components/kitchen-dashboard.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -5,47 +6,52 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Clock, CheckCircle, AlertTriangle, ChefHat, Package, Eye, Timer, Users, LogOut, BarChart3, Edit, Trash2 } from "lucide-react"
+import { Clock, CheckCircle, AlertTriangle, ChefHat, Package, Eye, Timer, Users, LogOut, Edit, Trash2, BookText, CookingPot, ToggleRight, ToggleLeft, Plus } from "lucide-react" // Adicionado ToggleRight/Left
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useToast } from "@/hooks/use-toast" // Import useToast
+import { useToast } from "@/hooks/use-toast"
 
-const BASE_URL = "http://localhost:8080/api" //
+const BASE_URL = "http://localhost:8080/api"
 
 // Define types based on API documentation
 interface OrderItemDTO {
-  id: number; //
-  orderId: number; //
-  menuItemId: number; //
-  menuItemName: string; //
-  menuItemDescription: string; //
-  quantity: number; //
-  unitPrice: number; // BigDecimal
-  totalPrice: number; // BigDecimal
+  id: number;
+  orderId: number;
+  menuItemId: number;
+  menuItemName: string;
+  menuItemDescription: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
   status: "PENDING" | "PREPARING" | "READY" | "DELIVERED";
-  createdAt: string //
-  // Additional fields from original frontend that are not in API DTO will be omitted or handled as mock
-  // table: number; // This needs to be fetched from OrderDTO if needed
-  // priority: "urgent" | "normal"; // This needs to be determined based on custom logic or added to API DTO
-  // orderTime: string; // This needs to be fetched from OrderDTO createdAt
-  // estimatedTime?: number; // Not in API DTO
-  // notes?: string; // Not in API DTO
-  // waiter: string; // This needs to be fetched from OrderDTO userName (waiter or client)
+  createdAt: string;
 }
 
 interface MenuItemDTO {
-  id: number; //
-  name: string; //
-  description: string; //
-  price: number; // BigDecimal
-  imageUrl?: string; //
-  category: "APPETIZERS" | "MAIN_COURSES" | "DESSERTS" | "DRINKS"; //
-  drinkType?: "WATER" | "SODA" | "NATURAL_JUICE" | "BEER" | "WINE" | "COCKTAIL"; //
-  // Add these properties if they are part of your backend MenuItemDTO, otherwise they are dummy
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl?: string;
+  category: "APPETIZERS" | "MAIN_COURSES" | "DESSERTS" | "DRINKS";
+  drinkType?: "WATER" | "SODA" | "NATURAL_JUICE" | "BEER" | "WINE" | "COCKTAIL";
   preparationTime?: number;
   difficulty?: "easy" | "medium" | "difficult";
-  available?: boolean;
-  ingredients?: string[]; // Assuming this is part of MenuItemDTO for kitchen display
-  allergens?: { name: string; severity: "low" | "medium" | "high" }[]; // Assuming this is part of MenuItemDTO for kitchen display
+  available?: boolean; // Este campo é crucial
+  ingredients?: string[];
+  allergens?: { name: string; severity: "low" | "medium" | "high" }[];
+}
+
+interface Recipe {
+    id: number;
+    name: string;
+    description: string;
+    ingredients: { name: string; quantity: string }[];
+    instructions: string[];
+    prepTimeMinutes: number;
+    cookTimeMinutes: number;
+    servings: number;
+    difficulty: "Fácil" | "Média" | "Difícil";
+    category: "Entradas" | "Pratos Principais" | "Sobremesas" | "Bebidas";
 }
 
 interface KitchenDashboardProps {
@@ -56,27 +62,164 @@ interface KitchenDashboardProps {
 export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboardProps) {
   const { toast } = useToast()
   const [currentTime, setCurrentTime] = useState(new Date())
-  const [activeSection, setActiveSection] = useState("all-orders") // Changed default to match sidebar
+  const [activeSection, setActiveSection] = useState("all-orders")
 
   // States populated by API
   const [pendingItems, setPendingItems] = useState<OrderItemDTO[]>([])
   const [preparingItems, setPreparingItems] = useState<OrderItemDTO[]>([])
   const [readyItems, setReadyItems] = useState<OrderItemDTO[]>([])
-  const [deliveredItems, setDeliveredItems] = useState<OrderItemDTO[]>([]) // For "completed" view
+  const [deliveredItems, setDeliveredItems] = useState<OrderItemDTO[]>([])
   const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([])
 
-  // Dummy data for sections not yet covered by API
-  const [stockItems, setStockItems] = useState<any[]>([
-    { id: 1, name: "Tomate", category: "Vegetais", currentStock: 15, minStock: 10, unit: "kg", cost: 5.00, supplier: "Hortifruti A", lastUpdate: "2024-05-28" },
-    { id: 2, name: "Frango", category: "Carnes", currentStock: 5, minStock: 8, unit: "kg", cost: 12.00, supplier: "Frigorífico B", lastUpdate: "2024-05-28" },
-    { id: 3, name: "Farinha", category: "Grãos", currentStock: 20, minStock: 5, unit: "kg", cost: 3.50, supplier: "Atacadão C", lastUpdate: "2024-05-27" },
-  ])
-  const [kitchenCategories, setKitchenCategories] = useState<any[]>([
-    { id: "entradas", name: "Entradas", icon: "🥗", color: "bg-green-500" },
-    { id: "principais", name: "Pratos Principais", icon: "🍝", color: "bg-blue-500" },
-    { id: "sobremesas", name: "Sobremesas", icon: "🍰", color: "bg-pink-500" },
-    { id: "bebidas", name: "Bebidas", icon: "🍹", color: "bg-cyan-500" },
-  ])
+  // Hardcoded recipes for now
+  const [recipes, setRecipes] = useState<Recipe[]>([
+    {
+      id: 1,
+      name: "Risoto de Funghi Secchi",
+      description: "Um risoto cremoso e saboroso com cogumelos funghi secchi reidratados.",
+      ingredients: [
+        { name: "Arroz arbóreo", quantity: "300g" },
+        { name: "Funghi secchi", quantity: "50g" },
+        { name: "Cebola", quantity: "1 unidade" },
+        { name: "Alho", quantity: "2 dentes" },
+        { name: "Vinho branco seco", quantity: "100ml" },
+        { name: "Caldo de legumes", quantity: "1 litro" },
+        { name: "Manteiga", quantity: "50g" },
+        { name: "Queijo parmesão ralado", quantity: "50g" },
+        { name: "Azeite", quantity: "a gosto" },
+        { name: "Sal e pimenta", quantity: "a gosto" },
+      ],
+      instructions: [
+        "Reidrate o funghi secchi em água morna por 20 minutos. Reserve a água.",
+        "Refogue a cebola e o alho picados no azeite até ficarem translúcidos.",
+        "Adicione o arroz arbóreo e refogue por 2 minutos.",
+        "Despeje o vinho branco e mexa até evaporar.",
+        "Adicione o funghi picado. Comece a adicionar o caldo de legumes (incluindo a água do funghi) aos poucos, mexendo sempre, até o arroz ficar al dente.",
+        "Finalize com a manteiga e o queijo parmesão ralado. Acerte o sal e a pimenta."
+      ],
+      prepTimeMinutes: 15,
+      cookTimeMinutes: 25,
+      servings: 2,
+      difficulty: "Média",
+      category: "Pratos Principais"
+    },
+    {
+        id: 2,
+        name: "Salmão Grelhado com Aspargos",
+        description: "Filé de salmão grelhado com aspargos frescos e limão.",
+        ingredients: [
+            { name: "Filé de salmão", quantity: "2 unidades" },
+            { name: "Aspargos", quantity: "1 maço" },
+            { name: "Limão siciliano", quantity: "1 unidade" },
+            { name: "Azeite de oliva extra virgem", quantity: "a gosto" },
+            { name: "Sal e pimenta do reino", quantity: "a gosto" }
+        ],
+        instructions: [
+            "Tempere o salmão com sal, pimenta e suco de limão.",
+            "Grelhe o salmão em fogo médio-alto por 4-5 minutos de cada lado, ou até o ponto desejado.",
+            "Em outra frigideira, salteie os aspargos no azeite com sal e pimenta até ficarem tenros e crocantes.",
+            "Sirva o salmão com os aspargos e rodelas de limão."
+        ],
+        prepTimeMinutes: 10,
+        cookTimeMinutes: 15,
+        servings: 2,
+        difficulty: "Fácil",
+        category: "Pratos Principais"
+    },
+    {
+        id: 3,
+        name: "Brownie de Chocolate com Sorvete",
+        description: "Um brownie denso e úmido de chocolate, servido com sorvete de creme.",
+        ingredients: [
+            { name: "Chocolate meio amargo", quantity: "200g" },
+            { name: "Manteiga", quantity: "150g" },
+            { name: "Açúcar", quantity: "1 xícara" },
+            { name: "Ovos", quantity: "3 unidades" },
+            { name: "Farinha de trigo", quantity: "1/2 xícara" },
+            { name: "Cacau em pó", quantity: "1/4 xícara" },
+            { name: "Essência de baunilha", quantity: "1 colher de chá" },
+            { name: "Sorvete de creme", quantity: "a gosto" }
+        ],
+        instructions: [
+            "Derreta o chocolate com a manteiga em banho-maria ou micro-ondas.",
+            "Em outro recipiente, bata os ovos com o açúcar e a baunilha.",
+            "Misture o chocolate derretido aos ovos. Adicione a farinha e o cacau, misturando até incorporar.",
+            "Despeje a massa em uma forma untada e enfarinhada.",
+            "Asse em forno pré-aquecido a 180°C por 20-25 minutos. O centro deve parecer ligeiramente mole.",
+            "Deixe esfriar, corte em pedaços e sirva com sorvete de creme."
+        ],
+        prepTimeMinutes: 15,
+        cookTimeMinutes: 25,
+        servings: 8,
+        difficulty: "Fácil",
+        category: "Sobremesas"
+    },
+    {
+        id: 4,
+        name: "Caipirinha Clássica",
+        description: "A tradicional bebida brasileira com cachaça, limão, açúcar e gelo.",
+        ingredients: [
+            { name: "Limão Taiti", quantity: "1 unidade" },
+            { name: "Açúcar", quantity: "2 colheres de sopa" },
+            { name: "Cachaça", quantity: "50ml" },
+            { name: "Gelo", quantity: "a gosto" }
+        ],
+        instructions: [
+            "Corte o limão em 4 ou 8 partes. Remova a parte branca central para evitar amargor.",
+            "Em um copo, coloque o limão e o açúcar. Macerere (esprema) suavemente o limão com o açúcar.",
+            "Adicione a cachaça e o gelo. Misture bem.",
+            "Sirva imediatamente."
+        ],
+        prepTimeMinutes: 5,
+        cookTimeMinutes: 0,
+        servings: 1,
+        difficulty: "Fácil",
+        category: "Bebidas"
+    }
+  ]);
+
+  // Define o mapeamento de categorias para as que vêm da API
+  const categoryMapping = {
+    "entradas": "APPETIZERS",
+    "principais": "MAIN_COURSES",
+    "sobremesas": "DESSERTS",
+    "bebidas": "DRINKS",
+  };
+
+  // Definição das categorias da cozinha para uso nas seções de categorias
+  interface KitchenCategory {
+    id: string;
+    name: string;
+    icon: React.ReactNode;
+    color: string;
+  }
+
+  const kitchenCategories: KitchenCategory[] = [
+    {
+      id: "entradas",
+      name: "Entradas",
+      icon: <Package className="w-5 h-5" />,
+      color: "bg-green-500"
+    },
+    {
+      id: "principais",
+      name: "Pratos Principais",
+      icon: <ChefHat className="w-5 h-5" />,
+      color: "bg-blue-500"
+    },
+    {
+      id: "sobremesas",
+      name: "Sobremesas",
+      icon: <CheckCircle className="w-5 h-5" />,
+      color: "bg-pink-500"
+    },
+    {
+      id: "bebidas",
+      name: "Bebidas",
+      icon: <CookingPot className="w-5 h-5" />,
+      color: "bg-cyan-500"
+    }
+  ];
 
   // Clock effect
   useEffect(() => {
@@ -93,7 +236,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
         headers: { "Authorization": `Bearer ${authToken}` },
       })
       if (!response.ok) throw new Error("Failed to fetch pending items.")
-      const data: OrderItemDTO[] = await response.json() //
+      const data: OrderItemDTO[] = await response.json()
       setPendingItems(data)
     } catch (error: any) {
       toast({ title: "Erro", description: error.message, variant: "destructive" })
@@ -106,7 +249,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
         headers: { "Authorization": `Bearer ${authToken}` },
       })
       if (!response.ok) throw new Error("Failed to fetch preparing items.")
-      const data: OrderItemDTO[] = await response.json() //
+      const data: OrderItemDTO[] = await response.json()
       setPreparingItems(data)
     } catch (error: any) {
       toast({ title: "Erro", description: error.message, variant: "destructive" })
@@ -119,7 +262,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
         headers: { "Authorization": `Bearer ${authToken}` },
       })
       if (!response.ok) throw new Error("Failed to fetch ready items.")
-      const data: OrderItemDTO[] = await response.json() //
+      const data: OrderItemDTO[] = await response.json()
       setReadyItems(data)
     } catch (error: any) {
       toast({ title: "Erro", description: error.message, variant: "destructive" })
@@ -132,8 +275,9 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
         headers: { "Authorization": `Bearer ${authToken}` },
       })
       if (!response.ok) throw new Error("Failed to fetch menu items.")
-      const data: MenuItemDTO[] = await response.json() //
-      setMenuItems(data)
+      const data: MenuItemDTO[] = await response.json()
+      // Garante que o campo 'available' existe, mesmo que não venha da API
+      setMenuItems(data.map(item => ({ ...item, available: item.available !== undefined ? item.available : true })));
     } catch (error: any) {
       toast({ title: "Erro", description: error.message, variant: "destructive" })
     }
@@ -145,28 +289,22 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
       await fetchPreparingItems()
       await fetchReadyItems()
       await fetchMenuItems()
-      // You might want to fetch delivered items from a separate API call if available
-      // For now, deliveredItems is managed locally on status change
     }
   }
 
   useEffect(() => {
     fetchInitialData()
-    // Set up a polling interval for kitchen orders
-    const interval = setInterval(fetchInitialData, 15000); // Poll every 15 seconds
+    const interval = setInterval(fetchInitialData, 15000);
     return () => clearInterval(interval);
   }, [authToken])
 
   const handleStatusChange = async (itemId: number, currentStatus: OrderItemDTO["status"], targetStatus: OrderItemDTO["status"]) => {
     let endpoint = "";
-    if (targetStatus === "PREPARING") { //
-      endpoint = `/kitchen/items/${itemId}/start`; //
-    } else if (targetStatus === "READY") { //
-      endpoint = `/kitchen/items/${itemId}/ready`; //
+    if (targetStatus === "PREPARING") {
+      endpoint = `/kitchen/item/${itemId}/start-preparing`;
+    } else if (targetStatus === "READY") {
+      endpoint = `/kitchen/item/${itemId}/mark-ready`;
     } else {
-      // For "DELIVERED" status, this is handled by Waiter Service, so we'll just update locally
-      // or you might have a different kitchen-specific endpoint for "complete" if needed.
-      // For now, it will be a local state change on the frontend.
       if (targetStatus === "DELIVERED") {
         const itemToMove = pendingItems.find(item => item.id === itemId) ||
                            preparingItems.find(item => item.id === itemId) ||
@@ -182,70 +320,130 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
       }
     }
 
+    console.log(`Attempting to send PATCH to: ${BASE_URL}${endpoint}`);
+    console.log(`Auth Token: ${authToken ? 'Present' : 'Missing'}`);
+
     try {
-      const response = await fetch(`<span class="math-inline">\{BASE\_URL\}</span>{endpoint}`, {
+      const response = await fetch(`${BASE_URL}${endpoint}`, {
         method: "PATCH",
-        headers: { "Authorization": `Bearer ${authToken}` },
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authToken}`
+        },
       })
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to update item status to ${targetStatus}.`);
+        const errorText = await response.text();
+        let errorMessage = `Failed to update item status to ${targetStatus}.`;
+        try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+            console.error("Failed to parse error response as JSON:", errorText);
+            errorMessage = errorText || errorMessage;
+        }
+        console.error(`Error response for ${endpoint}:`, response.status, errorText);
+        throw new Error(errorMessage);
       }
-      toast({ title: "Status Atualizado", description: `Item ${itemId} agora está ${targetStatus}.` });
-      fetchInitialData(); // Re-fetch all lists to ensure consistency
+      toast({ title: "Status Atualizado", description: `Item ${itemId} agora está ${getStatusText(targetStatus)}. ✅` });
+      fetchInitialData();
     } catch (error: any) {
-      toast({ title: "Erro ao Atualizar Status", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao Atualizar Status", description: error.message || "Ocorreu um erro desconhecido.", variant: "destructive" });
+      console.error("Full error object:", error);
     }
   }
 
-  const getStatusColor = (status: OrderItemDTO["status"]) => { //
+  // NOVO: Função para alternar a disponibilidade do item do menu
+  const handleToggleMenuItemAvailability = async (id: number, currentAvailable: boolean) => {
+    const newAvailableStatus = !currentAvailable;
+    try {
+      const response = await fetch(`${BASE_URL}/kitchen/menu-item/${id}/toggle-availability?available=${newAvailableStatus}`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${authToken}`,
+          "Content-Type": "application/json" // Pode ser necessário para PATCH
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Failed to toggle availability for item ${id}.`;
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+          console.error("Failed to parse error response as JSON:", errorText);
+          errorMessage = errorText || errorMessage;
+        }
+        console.error(`Error response for toggle availability:`, response.status, errorText);
+        throw new Error(errorMessage);
+      }
+
+      const updatedItem: MenuItemDTO = await response.json();
+      setMenuItems(prev => prev.map(item =>
+        item.id === updatedItem.id ? updatedItem : item
+      ));
+      toast({
+        title: "Disponibilidade Atualizada",
+        description: `${updatedItem.name} agora está ${updatedItem.available ? 'disponível' : 'indisponível'}.`,
+        variant: "default"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao Atualizar Disponibilidade",
+        description: error.message || "Ocorreu um erro desconhecido ao alterar a disponibilidade.",
+        variant: "destructive"
+      });
+      console.error("Full error object for toggle availability:", error);
+    }
+  };
+
+
+  const getStatusColor = (status: OrderItemDTO["status"]) => {
     switch (status) {
-      case "PENDING": //
+      case "PENDING":
         return "bg-blue-500"
-      case "PREPARING": //
+      case "PREPARING":
         return "bg-yellow-500"
-      case "READY": //
+      case "READY":
         return "bg-green-500"
-      case "DELIVERED": //
+      case "DELIVERED":
         return "bg-gray-500"
       default:
         return "bg-gray-400"
     }
   }
 
-  const getStatusText = (status: OrderItemDTO["status"]) => { //
+  const getStatusText = (status: OrderItemDTO["status"]) => {
     switch (status) {
-      case "PENDING": //
+      case "PENDING":
         return "Novo"
-      case "PREPARING": //
+      case "PREPARING":
         return "Em Preparo"
-      case "READY": //
+      case "READY":
         return "Pronto"
-      case "DELIVERED": //
+      case "DELIVERED":
         return "Finalizado"
       default:
         return status
     }
   }
 
-  const getPriorityColor = (priority: "urgent" | "normal") => { // This is a frontend-only concept from previous code
+  const getPriorityColor = (priority: "urgent" | "normal") => {
     return priority === "urgent" ? "bg-red-500" : "bg-blue-500"
   }
 
-  const getElapsedTime = (createdAt: string) => { // Assuming createdAt is LocalDateTime string
+  const getElapsedTime = (createdAt: string) => {
     try {
       const itemDate = new Date(createdAt);
       const elapsed = Math.floor((currentTime.getTime() - itemDate.getTime()) / (1000 * 60));
       return elapsed;
     } catch (e) {
-      return 0; // Or handle error appropriately
+      return 0;
     }
   }
 
   const OrderCard = ({ order, showActions = true }: { order: OrderItemDTO; showActions?: boolean }) => {
-    // Attempt to find related menu item for details like preparation time
-    const relatedMenuItem = menuItems.find(item => item.id === order.menuItemId); //
-    // Mock data for table number and waiter, as OrderItemDTO doesn't contain this directly
+    const relatedMenuItem = menuItems.find(item => item.id === order.menuItemId);
     const mockTable = order.orderId % 10;
     const mockWaiter = `Garçom ${order.orderId % 5 + 1}`;
     const mockPriority: "urgent" | "normal" = (order.quantity > 5 || order.menuItemName.includes("Urgente")) ? "urgent" : "normal";
@@ -266,7 +464,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
             </div>
             <div className="text-right text-sm text-gray-600">
               <div>Item: {order.menuItemName} ({order.quantity})</div>
-              <div>Iniciado: {new Date(order.createdAt).toLocaleTimeString()}</div> {/* */}
+              <div>Iniciado: {new Date(order.createdAt).toLocaleTimeString()}</div>
               <div className="flex items-center gap-1 justify-end">
                 <Timer className="w-3 h-3" />
                 {getElapsedTime(order.createdAt)} min
@@ -282,20 +480,10 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
                 <li className="text-sm">
                   {order.menuItemName} (x{order.quantity})
                 </li>
-                {order.menuItemDescription && <li className="text-xs text-gray-500">{order.menuItemDescription}</li>} {/* */}
+                {order.menuItemDescription && <li className="text-xs text-gray-500">{order.menuItemDescription}</li>}
                 {relatedMenuItem?.preparationTime && <li className="text-xs text-gray-500">Tempo de preparo estimado: {relatedMenuItem.preparationTime} min</li>}
-                {/* Add ingredients and allergens here if needed from MenuItemDTO */}
               </ul>
             </div>
-
-            {/* order.notes and order.estimatedTime are not in OrderItemDTO or MenuItemDTO, keep as dummy/mock if critical */}
-            {/* {order.notes && (
-              <div className="bg-yellow-50 p-2 rounded border-l-4 border-yellow-400">
-                <p className="text-sm">
-                  <strong>Observações:</strong> {order.notes}
-                </p>
-              </div>
-            )} */}
 
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Users className="w-4 h-4" />
@@ -304,24 +492,24 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
 
             {showActions && (
               <div className="flex gap-2 pt-2">
-                {order.status === "PENDING" && ( //
+                {order.status === "PENDING" && (
                   <Button
-                    onClick={() => handleStatusChange(order.id, order.status, "PREPARING")} //
+                    onClick={() => handleStatusChange(order.id, order.status, "PREPARING")}
                     className="bg-yellow-500 hover:bg-yellow-600"
                   >
                     <ChefHat className="w-4 h-4 mr-2" />
                     Iniciar Preparo
                   </Button>
                 )}
-                {order.status === "PREPARING" && ( //
-                  <Button onClick={() => handleStatusChange(order.id, order.status, "READY")} className="bg-green-500 hover:bg-green-600"> {/* */}
+                {order.status === "PREPARING" && (
+                  <Button onClick={() => handleStatusChange(order.id, order.status, "READY")} className="bg-green-500 hover:bg-green-600">
                     <Package className="w-4 h-4 mr-2" />
                     Marcar como Pronto
                   </Button>
                 )}
-                {order.status === "READY" && ( //
+                {order.status === "READY" && (
                   <Button
-                    onClick={() => handleStatusChange(order.id, order.status, "DELIVERED")} // Frontend "Finalizar" moves to delivered state
+                    onClick={() => handleStatusChange(order.id, order.status, "DELIVERED")}
                     className="bg-gray-500 hover:bg-gray-600"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
@@ -341,7 +529,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
       category: "Pedidos",
       items: [
         { key: "all-orders", label: "Todos os Pedidos", count: pendingItems.length + preparingItems.length + readyItems.length + deliveredItems.length, icon: Package },
-        { key: "urgent-orders", label: "Urgentes", count: pendingItems.filter(item => (item.quantity > 5 || item.menuItemName.includes("Urgente"))).length, icon: AlertTriangle }, // Mock urgency
+        { key: "urgent-orders", label: "Urgentes", count: pendingItems.filter(item => (item.quantity > 5 || item.menuItemName.includes("Urgente"))).length, icon: AlertTriangle },
         { key: "new-orders", label: "Novos", count: pendingItems.length, icon: Package },
         { key: "preparing-orders", label: "Em Preparo", count: preparingItems.length, icon: ChefHat },
         { key: "ready-orders", label: "Prontos", count: readyItems.length, icon: CheckCircle },
@@ -352,24 +540,19 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
       category: "Cardápio",
       items: [
         { key: "menu-management", label: "Gerenciar Cardápio", count: menuItems.length, icon: Package },
-        { key: "categories", label: "Categorias", count: kitchenCategories.length, icon: Package },
-        {
-          key: "stock",
-          label: "Estoque",
-          count: stockItems.filter((item) => item.currentStock <= item.minStock).length,
-          icon: AlertTriangle,
-        },
-        { key: "recipes", label: "Receitas", count: null, icon: ChefHat },
+        { key: "categories", label: "Categorias", count: Object.keys(categoryMapping).length, icon: Package },
+        { key: "recipes", label: "Receitas", count: recipes.length, icon: CookingPot }, // Receitas
       ],
     },
-    {
-      category: "Relatórios",
-      items: [
-        { key: "sales-report", label: "Vendas por Categoria", count: null, icon: BarChart3 },
-        { key: "stock-report", label: "Relatório de Estoque", count: null, icon: Package },
-        { key: "performance", label: "Performance", count: null, icon: Timer },
-      ],
-    },
+    // Removendo a categoria "Relatórios" e "Estoque"
+    // {
+    //   category: "Relatórios",
+    //   items: [
+    //     { key: "sales-report", label: "Vendas por Categoria", count: null, icon: BarChart3 },
+    //     { key: "stock-report", label: "Relatório de Estoque", count: null, icon: Package },
+    //     { key: "performance", label: "Performance", count: null, icon: Timer },
+    //   ],
+    // },
     {
       category: "Sistema",
       items: [{ key: "logout", label: "Sair", count: null, icon: LogOut }],
@@ -423,40 +606,40 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
     </div>
   )
 
-  const getDifficultyColor = (difficulty: string) => { // Dummy data
+  const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
-      case "easy":
+      case "Fácil":
         return "bg-green-100 text-green-800"
-      case "medium":
+      case "Média":
         return "bg-yellow-100 text-yellow-800"
-      case "difficult":
+      case "Difícil":
         return "bg-red-100 text-red-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
   }
 
-  const getCategoryColor = (category: string) => { //
+  const getCategoryColor = (category: string) => {
     switch (category) {
-      case "APPETIZERS": //
+      case "APPETIZERS":
         return "bg-green-100 text-green-800"
-      case "MAIN_COURSES": //
+      case "MAIN_COURSES":
         return "bg-blue-100 text-blue-800"
-      case "DESSERTS": //
+      case "DESSERTS":
         return "bg-pink-100 text-pink-800"
-      case "DRINKS": //
+      case "DRINKS":
         return "bg-cyan-100 text-cyan-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
   }
 
-  const getCategoryDisplayName = (category: string) => { //
+  const getCategoryDisplayName = (category: string) => {
     switch (category) {
-      case "APPETIZERS": return "Entradas"; //
-      case "MAIN_COURSES": return "Pratos Principais"; //
-      case "DESSERTS": return "Sobremesas"; //
-      case "DRINKS": return "Bebidas"; //
+      case "APPETIZERS": return "Entradas";
+      case "MAIN_COURSES": return "Pratos Principais";
+      case "DESSERTS": return "Sobremesas";
+      case "DRINKS": return "Bebidas";
       default: return category;
     }
   }
@@ -473,7 +656,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
               ? readyItems
               : activeSection === "completed-orders"
                 ? deliveredItems
-                : pendingItems.filter(item => (item.quantity > 5 || item.menuItemName.includes("Urgente"))) // Mock urgency
+                : pendingItems.filter(item => (item.quantity > 5 || item.menuItemName.includes("Urgente")))
       return (
         <div className="flex-1 p-6 overflow-auto">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
@@ -518,7 +701,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Urgentes</p>
-                    <p className="text-2xl font-bold text-red-600">{pendingItems.filter(item => (item.quantity > 5 || item.menuItemName.includes("Urgente"))).length}</p> {/* Mock urgency */}
+                    <p className="text-2xl font-bold text-red-600">{pendingItems.filter(item => (item.quantity > 5 || item.menuItemName.includes("Urgente"))).length}</p>
                   </div>
                   <AlertTriangle className="w-8 h-8 text-red-600" />
                 </div>
@@ -584,9 +767,11 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {kitchenCategories.map((category) => {
+              // Correção aqui: Usando o mapeamento de categorias
+              const apiCategory = categoryMapping[category.id as keyof typeof categoryMapping];
               const categoryItemsCount = menuItems.filter((item) =>
-                item.category.toLowerCase().includes(category.id === "principais" ? "main_courses" : category.name.toLowerCase()) // Adjust to API categories
-              ).length
+                item.category === apiCategory
+              ).length;
               return (
                 <Card key={category.id} className="hover:shadow-lg transition-shadow">
                   <CardContent className="p-6">
@@ -617,9 +802,11 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
             <CardContent>
               <div className="space-y-4">
                 {kitchenCategories.map((category) => {
+                  // Correção aqui: Usando o mapeamento de categorias
+                  const apiCategory = categoryMapping[category.id as keyof typeof categoryMapping];
                   const categoryItems = menuItems.filter((item) =>
-                    item.category.toLowerCase().includes(category.id === "principais" ? "main_courses" : category.name.toLowerCase()) // Adjust to API categories
-                  )
+                    item.category === apiCategory
+                  );
                   return (
                     <div key={category.id} className="border rounded-lg p-4">
                       <div className="flex items-center gap-3 mb-3">
@@ -632,15 +819,13 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
                           <div key={item.id} className="bg-gray-50 p-3 rounded border">
                             <div className="flex justify-between items-start mb-2">
                               <h5 className="font-medium text-sm">{item.name}</h5>
-                              {/* Assuming 'available' would be a field in MenuItemDTO if it were manageable by kitchen */}
                               <Badge
                                 className={item.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
                               >
                                 {item.available ? "Disponível" : "Indisponível"}
                               </Badge>
                             </div>
-                            <p className="text-xs text-gray-600 mb-2">R$ {item.price.toFixed(2)}</p> {/* */}
-                            {/* Assuming preparationTime and difficulty are part of MenuItemDTO or derived */}
+                            <p className="text-xs text-gray-600 mb-2">R$ {item.price.toFixed(2)}</p>
                             <p className="text-xs text-gray-500">{item.preparationTime || 0} min</p>
                           </div>
                         ))}
@@ -660,7 +845,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-gray-900">Gerenciar Cardápio</h2>
-            <Button className="bg-blue-600 hover:bg-blue-700"> {/* Add item functionality would go here, similar to admin */}
+            <Button className="bg-blue-600 hover:bg-blue-700">
               <Package className="w-4 h-4 mr-2" />
               Adicionar Item
             </Button>
@@ -685,7 +870,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
                   <div>
                     <p className="text-sm text-gray-600">Itens Disponíveis</p>
                     <p className="text-2xl font-bold text-green-600">
-                      {menuItems.filter((item) => item.available).length} {/* Assuming available is a field */}
+                      {menuItems.filter((item) => item.available).length}
                     </p>
                   </div>
                   <CheckCircle className="w-8 h-8 text-green-600" />
@@ -699,7 +884,7 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
                   <div>
                     <p className="text-sm text-gray-600">Preço Médio</p>
                     <p className="text-2xl font-bold text-purple-600">
-                      R$ {(menuItems.length > 0 ? menuItems.reduce((acc, item) => acc + item.price, 0) / menuItems.length : 0).toFixed(2)} {/* */}
+                      R$ {(menuItems.length > 0 ? menuItems.reduce((acc, item) => acc + item.price, 0) / menuItems.length : 0).toFixed(2)}
                     </p>
                   </div>
                   <Timer className="w-8 h-8 text-purple-600" />
@@ -719,38 +904,39 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h4 className="font-semibold text-lg">{item.name}</h4> {/* */}
-                          <Badge className={`${getCategoryColor(item.category)}`}>{getCategoryDisplayName(item.category)}</Badge> {/* */}
-                          <Badge className={item.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}> {/* Assuming 'available' field */}
+                          <h4 className="font-semibold text-lg">{item.name}</h4>
+                          <Badge className={`${getCategoryColor(item.category)}`}>{getCategoryDisplayName(item.category)}</Badge>
+                          <Badge className={item.available ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
                             {item.available ? "Disponível" : "Indisponível"}
                           </Badge>
                         </div>
-                        <p className="text-gray-600 text-sm mb-2">{item.description}</p> {/* */}
+                        <p className="text-gray-600 text-sm mb-2">{item.description}</p>
                         <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>R$ {item.price.toFixed(2)}</span> {/* */}
-                          {/* Assuming preparationTime and difficulty are part of MenuItemDTO or derived */}
+                          <span>R$ {item.price.toFixed(2)}</span>
                           <span>{item.preparationTime || 0} min</span>
                           <span className={getDifficultyColor(item.difficulty || "medium")}>
-                            {item.difficulty === "easy" ? "Fácil" : item.difficulty === "medium" ? "Médio" : item.difficulty === "difficult" ? "Difícil" : "N/A"}
+                            {item.difficulty === "easy" ? "Fácil" : item.difficulty === "medium" ? "Média" : item.difficulty === "difficult" ? "Difícil" : "N/A"}
                           </span>
                         </div>
                       </div>
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm">
-                          <Edit className="w-4 h-4" /> {/* Edit action not implemented fully here */}
+                          <Edit className="w-4 h-4" />
                         </Button>
+                        {/* BOTÃO DE ATIVAR/DESATIVAR ITEM */}
                         <Button
                           variant="outline"
                           size="sm"
-                          className={item.available ? "text-red-600" : "text-green-600"}
-                          // onClick={() => handleToggleMenuItemAvailability(item.id, item.available)} // Implement this if API supports
+                          className={item.available ? "text-red-600 hover:bg-red-50" : "text-green-600 hover:bg-green-50"}
+                          onClick={() => handleToggleMenuItemAvailability(item.id, item.available || false)} // Passe o status atual
                         >
+                          {item.available ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                           {item.available ? "Desativar" : "Ativar"}
                         </Button>
                         <Button
                           variant="destructive"
                           size="sm"
-                          // onClick={() => handleDeleteMenuItem(item.id, item.name)} // Implement this if API supports
+                          // onClick={() => handleDeleteMenuItem(item.id, item.name)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -794,248 +980,65 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
       )
     }
 
-    if (activeSection === "stock") {
+    if (activeSection === "recipes") { // Nova seção de Receitas
       return (
         <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-gray-900">Controle de Estoque</h2>
-            <Button className="bg-green-600 hover:bg-green-700">
-              <Package className="w-4 h-4 mr-2" />
-              Adicionar Item
-            </Button>
-          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Livro de Receitas</h2>
+          <p className="text-sm text-gray-600">Receitas salvas para consulta rápida.</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Total de Itens</p>
-                    <p className="text-2xl font-bold text-blue-600">{stockItems.length}</p>
-                  </div>
-                  <Package className="w-8 h-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Estoque Baixo</p>
-                    <p className="text-2xl font-bold text-red-600">
-                      {stockItems.filter((item) => item.currentStock <= item.minStock).length}
-                    </p>
-                  </div>
-                  <AlertTriangle className="w-8 h-8 text-red-600" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Valor Total</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      R$ {stockItems.reduce((acc, item) => acc + item.currentStock * item.cost, 0).toFixed(2)}
-                    </p>
-                  </div>
-                  <Timer className="w-8 h-8 text-green-600" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Fornecedores</p>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {new Set(stockItems.map((item) => item.supplier)).size}
-                    </p>
-                  </div>
-                  <Users className="w-8 h-8 text-purple-600" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Itens em Estoque</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {stockItems.map((item) => (
-                  <div key={item.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h4 className="font-semibold text-lg">{item.name}</h4>
-                          <Badge className="bg-blue-100 text-blue-800">{item.category}</Badge>
-                          {item.currentStock <= item.minStock && (
-                            <Badge className="bg-red-100 text-red-800">
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              Estoque Baixo
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-500">Estoque Atual:</span>
-                            <p className="font-semibold">
-                              {item.currentStock} {item.unit}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Estoque Mínimo:</span>
-                            <p className="font-semibold">
-                              {item.minStock} {item.unit}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Custo Unitário:</span>
-                            <p className="font-semibold">R$ {item.cost.toFixed(2)}</p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Valor Total:</span>
-                            <p className="font-semibold">R$ {(item.currentStock * item.cost).toFixed(2)}</p>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-sm text-gray-500">
-                          <span>Fornecedor: {item.supplier}</span>
-                          <span className="ml-4">Última atualização: {item.lastUpdate}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm">
-                          Editar
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-green-600">
-                          Repor
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Nível do Estoque</span>
-                        <span>{Math.round((item.currentStock / (item.minStock * 3)) * 100)}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            item.currentStock <= item.minStock
-                              ? "bg-red-500"
-                              : item.currentStock <= item.minStock * 2
-                                ? "bg-yellow-500"
-                                : "bg-green-500"
-                          }`}
-                          style={{ width: `${Math.min((item.currentStock / (item.minStock * 3)) * 100, 100)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )
-    }
-
-    if (activeSection === "sales-report") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Relatório de Vendas por Categoria</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {kitchenCategories.map((category) => {
-              const categoryItems = menuItems.filter((item) =>
-                item.category.toLowerCase().includes(category.id === "principais" ? "main_courses" : category.name.toLowerCase()), //
-              )
-              const totalSales = Math.floor(Math.random() * 50) + 10 // Simulado
-              const revenue =
-                categoryItems.reduce((acc, item) => acc + item.price, 0) * (totalSales / (categoryItems.length || 1))
-
-              return (
-                <Card key={category.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className={`p-3 rounded-lg ${category.color} text-white text-2xl`}>{category.icon}</div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold">{totalSales}</p>
-                        <p className="text-sm text-gray-600">vendas</p>
-                      </div>
-                    </div>
-                    <h3 className="font-semibold mb-2">{category.name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">Receita: R$ {revenue.toFixed(2)}</p>
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>{categoryItems.length} itens</span>
-                      <span>+{Math.floor(Math.random() * 20)}% vs ontem</span>
-                    </div>
-                  </CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {recipes.length === 0 ? (
+                <Card className="lg:col-span-3">
+                    <CardContent className="p-8 text-center">
+                        <BookText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-500">Nenhuma receita cadastrada. Adicione uma nova!</p>
+                    </CardContent>
                 </Card>
-              )
-            })}
+            ) : (
+                recipes.map((recipe) => (
+                    <Card key={recipe.id} className="hover:shadow-lg transition-shadow">
+                        <CardHeader className="pb-3">
+                            <CardTitle className="text-lg">{recipe.name}</CardTitle>
+                            <div className="flex items-center gap-2">
+                                <Badge className={`${getCategoryColor(categoryMapping[recipe.category as keyof typeof categoryMapping])}`}>{recipe.category}</Badge>
+                                <Badge className={getDifficultyColor(recipe.difficulty)}>{recipe.difficulty}</Badge>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <p className="text-sm text-gray-700">{recipe.description}</p>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                <p><span className="font-semibold">Preparo:</span> {recipe.prepTimeMinutes} min</p>
+                                <p><span className="font-semibold">Cozimento:</span> {recipe.cookTimeMinutes} min</p>
+                                <p><span className="font-semibold">Porções:</span> {recipe.servings}</p>
+                            </div>
+                            <h4 className="font-medium text-sm mb-1">Ingredientes:</h4>
+                            <ul className="list-disc list-inside text-xs text-gray-700">
+                                {recipe.ingredients.map((ing, i) => (
+                                    <li key={i}>{ing.quantity} de {ing.name}</li>
+                                ))}
+                            </ul>
+                            <h4 className="font-medium text-sm mb-1">Instruções:</h4>
+                            <ol className="list-decimal list-inside text-xs text-gray-700 space-y-1">
+                                {recipe.instructions.map((inst, i) => (
+                                    <li key={i}>{inst}</li>
+                                ))}
+                            </ol>
+                        </CardContent>
+                    </Card>
+                ))
+            )}
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Top 5 Itens Mais Vendidos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {menuItems.slice(0, 5).map((item, index) => (
-                    <div key={item.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-lg text-gray-400">#{index + 1}</span>
-                        <div>
-                          <p className="font-medium">{item.name}</p> {/* */}
-                          <p className="text-sm text-gray-600">{getCategoryDisplayName(item.category)}</p> {/* */}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold">{Math.floor(Math.random() * 20) + 5} vendas</p>
-                        <p className="text-sm text-gray-600">R$ {item.price.toFixed(2)}</p> {/* */}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance por Horário</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[
-                    { period: "Manhã (06:00-12:00)", sales: 23, percentage: 25 },
-                    { period: "Almoço (12:00-15:00)", sales: 45, percentage: 50 },
-                    { period: "Tarde (15:00-18:00)", sales: 12, percentage: 15 },
-                    { period: "Jantar (18:00-23:00)", sales: 38, percentage: 42 },
-                  ].map((period, index) => (
-                    <div key={index} className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm font-medium">{period.period}</span>
-                        <span className="text-sm">{period.sales} vendas</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${period.percentage}%` }}></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <Button className="w-full bg-blue-600 hover:bg-blue-700 mt-4">
+              <Plus className="w-4 h-4 mr-2" />
+              Adicionar Nova Receita (Em breve)
+          </Button>
         </div>
-      )
+      );
     }
+    
+    // As seções "stock", "sales-report" e "performance" foram removidas.
+    // Se você precisar de lógica para esses itens no futuro, eles precisarão
+    // ser re-adicionados aqui e na sidebarItems.
 
     return (
       <div className="flex-1 p-6">
@@ -1063,9 +1066,11 @@ export default function KitchenDashboard({ onLogout, authToken }: KitchenDashboa
               </div>
             </div>
           </div>
-        </div>
 
-        {renderMainContent()}
+          <ScrollArea className="flex-1 h-[calc(100vh-100px)]"> 
+            {renderMainContent()}
+          </ScrollArea>
+        </div>
       </div>
     </div>
   )

@@ -2,14 +2,19 @@ package com.rb.TableMaster.service;
 
 import com.rb.TableMaster.dto.OrderDTO;
 import com.rb.TableMaster.dto.OrderItemDTO;
+import com.rb.TableMaster.dto.mapper.OrderMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
+import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.User;
 import com.rb.TableMaster.model.enums.OrderStatus;
+import com.rb.TableMaster.repository.OrderRepository;
 import com.rb.TableMaster.repository.UserRepository;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +22,8 @@ public class ClientService {
     private final UserRepository userRepository;
     private final OrderService orderService;
     private final RestaurantTableService tableService;
+    private final OrderRepository orderRepository;
+    private final OrderMapper orderMapper;
 
     public OrderDTO reserveTable(String clientCpf, Long tableId, String reservedTime) {
         userRepository.findById(clientCpf)

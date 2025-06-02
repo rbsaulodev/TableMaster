@@ -1,3 +1,4 @@
+// src/app/components/waiter-dashboard.tsx
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -349,7 +350,15 @@ export default function WaiterDashboard({ onLogout, authToken, currentUserData }
   // --- FIM DAS FUNÇÕES DE FETCH ---
 
   const fetchInitialData = useCallback(async () => {
-    if (!authToken) return;
+    if (!authToken) {
+        console.warn("No authentication token found. Cannot fetch initial data.");
+        toast({
+            title: "Erro de autenticação",
+            description: "Você não está logado. Por favor, faça login novamente.",
+            variant: "destructive"
+        });
+        return;
+    }
 
     try {
       await Promise.all([
@@ -406,27 +415,44 @@ export default function WaiterDashboard({ onLogout, authToken, currentUserData }
   const handleStatusChange = async (itemId: number, currentStatus: OrderItemDTO["status"], targetStatus: "PREPARING" | "READY") => {
     let endpoint = "";
     if (targetStatus === "PREPARING") {
-      endpoint = `/kitchen/${itemId}/start-preparing`; // CORRIGIDO: Removido /items e ajustado nome do endpoint
+      endpoint = `/kitchen/item/${itemId}/start-preparing`; 
     } else if (targetStatus === "READY") {
-      endpoint = `/kitchen/${itemId}/mark-ready`; // CORRIGIDO: Removido /items e ajustado nome do endpoint
+      endpoint = `/kitchen/item/${itemId}/mark-ready`; 
     } else {
       toast({ title: "Erro de Status", description: "Status de destino inválido.", variant: "destructive" });
       return;
     }
 
+    console.log(`Attempting to send PATCH to: ${BASE_URL}${endpoint}`);
+    console.log(`Auth Token: ${authToken ? 'Present' : 'Missing'}`); // Debugging token presence
+
     try {
       const response = await fetch(`${BASE_URL}${endpoint}`, {
         method: "PATCH",
-        headers: { "Authorization": `Bearer ${authToken}` },
+        headers: {
+          "Content-Type": "application/json", // Adicionado, pode ser necessário para PATCH
+          "Authorization": `Bearer ${authToken}`
+        },
       })
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to update item status to ${targetStatus}.`);
+        const errorText = await response.text(); // Capture raw text for more info
+        let errorMessage = `Failed to update item status to ${targetStatus}.`;
+        try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.message || errorMessage;
+        } catch (parseError) {
+            // If response is not JSON, use raw text
+            console.error("Failed to parse error response as JSON:", errorText);
+            errorMessage = errorText || errorMessage;
+        }
+        console.error(`Error response for ${endpoint}:`, response.status, errorText);
+        throw new Error(errorMessage);
       }
-      toast({ title: "Status Atualizado", description: `Item ${itemId} agora está ${targetStatus}.` });
+      toast({ title: "Status Atualizado", description: `Item ${itemId} agora está ${getOrderItemStatusText(targetStatus as OrderItemDTO["status"])}. ✅` });
       fetchInitialData();
     } catch (error: any) {
-      toast({ title: "Erro ao Atualizar Status", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao Atualizar Status", description: error.message || "Ocorreu um erro desconhecido.", variant: "destructive" });
+      console.error("Full error object:", error);
     }
   }
 

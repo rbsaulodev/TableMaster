@@ -31,4 +31,7 @@ public class MenuItem {
 
     @Enumerated(EnumType.STRING)
     private DrinkType drinkType;
+
+    @Column(nullable = false)
+    private boolean available = true;
 }

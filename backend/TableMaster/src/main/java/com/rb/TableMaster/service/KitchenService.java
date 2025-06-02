@@ -2,9 +2,9 @@ package com.rb.TableMaster.service;
 
 import com.rb.TableMaster.dto.OrderItemDTO;
 import com.rb.TableMaster.model.enums.OrderItemStatus;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -13,7 +13,7 @@ import java.util.List;
 public class KitchenService {
 
     private final OrderItemService orderItemService;
-    private final NotificationService notificationService;
+    // Removido NotificationService diretamente aqui, pois OrderItemService publicará o evento
 
     public List<OrderItemDTO> getPendingItems() {
         return orderItemService.getItemsByStatus(OrderItemStatus.PENDING);
@@ -29,15 +29,15 @@ public class KitchenService {
 
     @Transactional
     public OrderItemDTO startPreparing(Long itemId) {
+        // orderItemService agora se encarrega de publicar o evento
         OrderItemDTO item = orderItemService.updateItemStatus(itemId, OrderItemStatus.PREPARING);
-        notificationService.notifyItemInPreparation(itemId);
         return item;
     }
 
     @Transactional
     public OrderItemDTO markAsReady(Long itemId) {
+        // orderItemService agora se encarrega de publicar o evento
         OrderItemDTO item = orderItemService.updateItemStatus(itemId, OrderItemStatus.READY);
-        notificationService.notifyItemReady(itemId);
         return item;
     }
 

@@ -17,16 +17,18 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
-        Optional<User> userByCpf = userRepository.findById(identifier);
-
-        if (userByCpf.isPresent()) {
-            return new UserDetailsImpl(userByCpf.get());
-        }
-
         Optional<User> userByUsername = userRepository.findByUsername(identifier);
 
         if (userByUsername.isPresent()) {
             return new UserDetailsImpl(userByUsername.get());
+        }
+
+        if (identifier != null && identifier.matches("\\d{11}")) {
+            Optional<User> userByCpf = userRepository.findById(identifier);
+
+            if (userByCpf.isPresent()) {
+                return new UserDetailsImpl(userByCpf.get());
+            }
         }
 
         throw new UsernameNotFoundException("Usuário ou CPF não encontrado: " + identifier);

@@ -24,11 +24,19 @@ public record NotificationDTO(
         @PositiveOrZero(message = "O número da mesa deve ser positivo")
         Integer tableNumber,
 
-        @NotNull(message = "O ID do item é obrigatório")
-        @PositiveOrZero(message = "O ID do item deve ser positivo")
+        @PositiveOrZero(message = "O ID do pedido deve ser positivo ou zero se presente")
+        Long orderId,
+
+        @PositiveOrZero(message = "O ID do item deve ser positivo ou zero se presente")
         Long itemId,
 
-        @NotBlank(message = "O nome do item é obrigatório")
         @Size(max = 100, message = "O nome do item deve ter no máximo 100 caracteres")
-        String itemName
+        String itemName,
+
+        // NOVOS CAMPOS: userName e itemsSummary
+        @Size(max = 100, message = "O nome do usuário deve ter no máximo 100 caracteres")
+        String userName,
+
+        @Size(max = 255, message = "O resumo dos itens deve ter no máximo 255 caracteres")
+        String itemsSummary
 ) {}
