@@ -1,20 +1,20 @@
 package com.rb.TableMaster.service;
 
+import com.rb.TableMaster.controller.WebSocketController;
 import com.rb.TableMaster.dto.OrderDTO;
 import com.rb.TableMaster.dto.OrderItemDTO;
-import com.rb.TableMaster.dto.mapper.OrderMapper;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.User;
-import com.rb.TableMaster.model.enums.OrderStatus;
+import com.rb.TableMaster.model.enums.PaymentMethod;
 import com.rb.TableMaster.repository.OrderRepository;
+import com.rb.TableMaster.repository.RestaurantTableRepository;
 import com.rb.TableMaster.repository.UserRepository;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,31 +22,28 @@ public class ClientService {
     private final UserRepository userRepository;
     private final OrderService orderService;
     private final RestaurantTableService tableService;
+    private final WebSocketController webSocketController;
     private final OrderRepository orderRepository;
-    private final OrderMapper orderMapper;
+    private final RestaurantTableRepository restaurantTableRepository;
+    private final NotificationService notificationService;
 
+    @Transactional
     public OrderDTO reserveTable(String clientCpf, Long tableId, String reservedTime) {
-        userRepository.findById(clientCpf)
+        User client = userRepository.findById(clientCpf)
                 .orElseThrow(() -> new RecordNotFoundException(clientCpf, User.class));
 
         tableService.reserveTable(tableId, clientCpf, reservedTime);
-
-        return orderService.getActiveOrders().stream()
-                .filter(order -> order.tableId().equals(tableId)
-                        && (order.status() == OrderStatus.OPEN))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Pedido não foi criado automaticamente após reserva."));
+        OrderDTO newOrder = orderService.createOrderForTable(tableId, clientCpf, reservedTime);
+        return newOrder;
     }
 
+    @Transactional
     public OrderDTO startDining(String clientCpf, Long tableId) {
-        userRepository.findById(clientCpf)
+        User client = userRepository.findById(clientCpf)
                 .orElseThrow(() -> new RecordNotFoundException(clientCpf, User.class));
         tableService.occupyTable(tableId, clientCpf);
-        return orderService.getActiveOrders().stream()
-                .filter(order -> order.tableId().equals(tableId)
-                        && (order.status() == OrderStatus.OPEN || order.status() == OrderStatus.UNPAID))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Pedido não foi criado automaticamente."));
+        OrderDTO newOrder = orderService.createOrder(tableId, clientCpf);
+        return newOrder;
     }
 
     public OrderDTO addItemsToOrder(String clientCpf, Long orderId, List<OrderItemDTO> items) {
@@ -69,5 +66,32 @@ public class ClientService {
         userRepository.findById(clientCpf)
                 .orElseThrow(() -> new RecordNotFoundException(clientCpf, User.class));
         return orderService.getOrdersByUser(clientCpf);
+    }
+
+    @Transactional
+    public OrderDTO confirmOrder(String clientCpf, Long orderId) {
+        OrderDTO orderDTO = orderService.findById(orderId);
+        if (!orderDTO.userCpf().equals(clientCpf)) {
+            throw new IllegalStateException("O pedido " + orderId + " não pertence a este cliente.");
+        }
+        return orderService.confirmAndOpenOrder(orderId);
+    }
+
+    @Transactional
+    public OrderDTO requestAccount(String clientCpf, Long orderId, PaymentMethod requestedPaymentMethod) {
+        User client = userRepository.findById(clientCpf)
+                .orElseThrow(() -> new RecordNotFoundException(clientCpf, User.class));
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
+
+        if (!order.getUser().getCpf().equals(clientCpf)) {
+            throw new IllegalStateException("O pedido " + orderId + " não pertence ao cliente " + clientCpf);
+        }
+
+        OrderDTO updatedOrderDTO = orderService.requestPayment(orderId, requestedPaymentMethod);
+        notificationService.publishAccountRequest(order.getTable().getId(), order.getId(), requestedPaymentMethod);
+
+        return updatedOrderDTO;
     }
 }

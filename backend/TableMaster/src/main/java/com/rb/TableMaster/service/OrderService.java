@@ -5,7 +5,6 @@ import com.rb.TableMaster.dto.OrderDTO;
 import com.rb.TableMaster.dto.OrderItemDTO;
 import com.rb.TableMaster.dto.mapper.OrderMapper;
 import com.rb.TableMaster.dto.mapper.RestaurantTableMapper;
-import com.rb.TableMaster.event.OrderEventPublisher;
 import com.rb.TableMaster.exception.RecordNotFoundException;
 import com.rb.TableMaster.model.Order;
 import com.rb.TableMaster.model.OrderItem;
@@ -19,19 +18,19 @@ import com.rb.TableMaster.repository.OrderRepository;
 import com.rb.TableMaster.repository.RestaurantTableRepository;
 import com.rb.TableMaster.repository.UserRepository;
 import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
@@ -39,13 +38,39 @@ public class OrderService {
     private final UserRepository userRepository;
     private final MenuItemService menuItemService;
     private final OrderItemRepository orderItemRepository;
-    private final OrderEventPublisher eventPublisher;
     private final WebSocketController webSocketController;
     private final RestaurantTableMapper restaurantTableMapper;
+    private final OrderItemService orderItemService;
+    @Lazy
+    private final RestaurantTableService restaurantTableService;
 
     @Lazy
     private final NotificationService notificationService;
 
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+    public OrderService(OrderRepository orderRepository,
+                        OrderMapper orderMapper,
+                        RestaurantTableRepository tableRepository,
+                        UserRepository userRepository,
+                        MenuItemService menuItemService,
+                        OrderItemRepository orderItemRepository,
+                        WebSocketController webSocketController,
+                        RestaurantTableMapper restaurantTableMapper, OrderItemService orderItemService,
+                        @Lazy RestaurantTableService restaurantTableService,
+                        @Lazy NotificationService notificationService) {
+        this.orderRepository = orderRepository;
+        this.orderMapper = orderMapper;
+        this.tableRepository = tableRepository;
+        this.userRepository = userRepository;
+        this.menuItemService = menuItemService;
+        this.orderItemRepository = orderItemRepository;
+        this.webSocketController = webSocketController;
+        this.restaurantTableMapper = restaurantTableMapper;
+        this.orderItemService = orderItemService;
+        this.restaurantTableService = restaurantTableService;
+        this.notificationService = notificationService;
+    }
     public List<OrderDTO> list() {
         return orderRepository.findAll().stream()
                 .map(orderMapper::toDTO)
@@ -53,16 +78,20 @@ public class OrderService {
     }
 
     public OrderDTO findById(Long id) {
-        return orderRepository.findById(id)
-                .map(orderMapper::toDTO)
+        Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, Order.class));
+        order.getItems().size();
+        return orderMapper.toDTO(order);
     }
 
     public List<OrderDTO> findByTableId(Long tableId) {
         RestaurantTable table = tableRepository.findById(tableId)
                 .orElseThrow(() -> new RecordNotFoundException(tableId, RestaurantTable.class));
         return orderRepository.findByTable(table).stream()
-                .map(orderMapper::toDTO)
+                .map(order -> {
+                    order.getItems().size();
+                    return orderMapper.toDTO(order);
+                })
                 .toList();
     }
 
@@ -70,7 +99,10 @@ public class OrderService {
         User user = userRepository.findById(userCpf)
                 .orElseThrow(() -> new RecordNotFoundException(userCpf, User.class));
         return orderRepository.findByUser(user).stream()
-                .map(orderMapper::toDTO)
+                .map(order -> {
+                    order.getItems().size();
+                    return orderMapper.toDTO(order);
+                })
                 .toList();
     }
 
@@ -88,9 +120,15 @@ public class OrderService {
                 .status(OrderStatus.OPEN)
                 .totalValue(BigDecimal.ZERO)
                 .reservedTime(reservedTime)
+                .items(new ArrayList<>())
                 .build();
 
-        return orderMapper.toDTO(orderRepository.save(order));
+        Order savedOrder = orderRepository.save(order);
+        OrderDTO orderDTO = orderMapper.toDTO(savedOrder);
+
+        webSocketController.sendOrderUpdate(orderDTO);
+        notificationService.publishNewOrder(table.getId(), savedOrder.getId());
+        return orderDTO;
     }
 
     @Transactional
@@ -100,17 +138,17 @@ public class OrderService {
         User user = userRepository.findById(orderDTO.userCpf())
                 .orElseThrow(() -> new RecordNotFoundException(orderDTO.userCpf(), User.class));
 
-        Order order = Order.builder()
-                .table(table)
-                .user(user)
-                .createdAt(orderDTO.createdAt() != null ? orderDTO.createdAt() : LocalDateTime.now())
-                .status(orderDTO.status() != null ? orderDTO.status() : OrderStatus.OPEN)
-                .totalValue(orderDTO.totalValue() != null ? orderDTO.totalValue() : BigDecimal.ZERO)
-                .paymentMethod(orderDTO.paymentMethod())
-                .closedAt(orderDTO.closedAt())
-                .reservedTime(orderDTO.reservedTime())
-                .build();
-        return orderMapper.toDTO(orderRepository.save(order));
+        Order order = orderMapper.toEntity(orderDTO);
+        order.setTable(table);
+        order.setUser(user);
+        order.setCreatedAt(LocalDateTime.now());
+        order.setStatus(orderDTO.status() != null ? orderDTO.status() : OrderStatus.OPEN);
+        order.setTotalValue(orderDTO.totalValue() != null ? orderDTO.totalValue() : BigDecimal.ZERO);
+        order.setItems(new ArrayList<>());
+        Order savedOrder = orderRepository.save(order);
+        OrderDTO resultDTO = orderMapper.toDTO(savedOrder);
+        webSocketController.sendOrderUpdate(resultDTO);
+        return resultDTO;
     }
 
     @Transactional
@@ -118,23 +156,23 @@ public class OrderService {
         Order existingOrder = orderRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, Order.class));
         orderMapper.updateEntityFromDTO(orderDTO, existingOrder);
-        return orderMapper.toDTO(orderRepository.save(existingOrder));
+        Order savedOrder = orderRepository.save(existingOrder);
+        OrderDTO resultDTO = orderMapper.toDTO(savedOrder);
+        webSocketController.sendOrderUpdate(resultDTO);
+        return resultDTO;
     }
 
     @Transactional
     public OrderDTO addItemsToOrder(Long orderId, List<OrderItemDTO> itemDTOs) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
-
-        if (order.getItems() == null) {
-            order.setItems(new java.util.ArrayList<>());
-        }
+        order.getItems().size();
 
         BigDecimal currentTotal = order.getTotalValue() != null ? order.getTotalValue() : BigDecimal.ZERO;
 
         for (OrderItemDTO itemDTO : itemDTOs) {
             OrderItem existingItem = order.getItems().stream()
-                    .filter(oi -> oi.getMenuItem().getId().equals(itemDTO.menuItemId()))
+                    .filter(oi -> oi.getMenuItem() != null && oi.getMenuItem().getId().equals(itemDTO.menuItemId()))
                     .findFirst()
                     .orElse(null);
 
@@ -144,9 +182,9 @@ public class OrderService {
 
                 existingItem.setQuantity(existingItem.getQuantity() + itemDTO.quantity());
                 existingItem.setTotalPrice(existingItem.getUnitPrice().multiply(BigDecimal.valueOf(existingItem.getQuantity())));
-                currentTotal = currentTotal.add(existingItem.getTotalPrice());
-
+                existingItem.setUpdatedAt(LocalDateTime.now());
                 orderItemRepository.save(existingItem);
+                currentTotal = currentTotal.add(existingItem.getTotalPrice());
             } else {
                 com.rb.TableMaster.model.MenuItem menuItem = menuItemService.findEntityById(itemDTO.menuItemId());
 
@@ -157,14 +195,18 @@ public class OrderService {
                         .unitPrice(menuItem.getPrice())
                         .totalPrice(menuItem.getPrice().multiply(BigDecimal.valueOf(itemDTO.quantity())))
                         .status(com.rb.TableMaster.model.enums.OrderItemStatus.PENDING)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
                         .build();
                 orderItemRepository.save(newItem);
                 order.getItems().add(newItem);
                 currentTotal = currentTotal.add(newItem.getTotalPrice());
+                notificationService.publishNewOrderItem(newItem.getId());
             }
         }
         order.setTotalValue(currentTotal);
-        OrderDTO updatedOrderDTO = orderMapper.toDTO(orderRepository.save(order));
+        Order savedOrder = orderRepository.save(order);
+        OrderDTO updatedOrderDTO = orderMapper.toDTO(savedOrder);
         webSocketController.sendOrderUpdate(updatedOrderDTO);
         return updatedOrderDTO;
     }
@@ -186,20 +228,58 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderDTO payOrder(Long id, PaymentMethod paymentMethod) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(() -> new RecordNotFoundException(id, Order.class));
+    public OrderDTO payOrder(Long orderId, PaymentMethod paymentMethod) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
-        if (order.getStatus() != OrderStatus.UNPAID) {
-            throw new IllegalStateException("O pedido não está pronto para pagamento (Status: " + order.getStatus() + ")");
+        if (order.getStatus() == OrderStatus.PAID) {
+            throw new IllegalStateException("Order is already paid.");
         }
 
-        order.setPaymentMethod(paymentMethod);
         order.setStatus(OrderStatus.PAID);
+        order.setPaymentMethod(paymentMethod);
         order.setClosedAt(LocalDateTime.now());
-        OrderDTO orderDTO = orderMapper.toDTO(orderRepository.save(order));
-        webSocketController.sendOrderUpdate(orderDTO);
+        Order paidOrder = orderRepository.save(order);
+
+        RestaurantTable table = paidOrder.getTable();
+        if (table != null) {
+            List<Order> otherActiveOrdersOnTable = orderRepository
+                    .findByTableAndStatusInAndIdNot(
+                            table,
+                            List.of(OrderStatus.OPEN, OrderStatus.UNPAID),
+                            paidOrder.getId()
+                    );
+
+            if (otherActiveOrdersOnTable.isEmpty()) {
+                log.info("Nenhum outro pedido ativo para a mesa {}, liberando a mesa.", table.getId());
+                restaurantTableService.releaseTable(table.getId());
+            } else {
+                log.info("Ainda existem {} outros pedidos ativos/pendentes para a mesa {}. A mesa não será liberada automaticamente.", otherActiveOrdersOnTable.size(), table.getId());
+            }
+        } else {
+            log.warn("Pedido {} pago não está associado a nenhuma mesa. Não foi possível tentar liberar.", paidOrder.getId());
+        }
+
+        if (paidOrder.getItems() != null) {
+            paidOrder.getItems().forEach(item -> {
+                if (item.getStatus() != com.rb.TableMaster.model.enums.OrderItemStatus.DELIVERED) {
+                    orderItemService.updateItemStatus(item.getId(), com.rb.TableMaster.model.enums.OrderItemStatus.DELIVERED);
+                }
+            });
+        }
+
+        OrderDTO orderDTO = orderMapper.toDTO(paidOrder);
         return orderDTO;
+    }
+
+    public List<OrderDTO> findByStatus(OrderStatus status) {
+        return orderRepository.findByStatus(status)
+                .stream()
+                .map(order -> {
+                    order.getItems().size();
+                    return orderMapper.toDTO(order);
+                })
+                .toList();
     }
 
     @Transactional
@@ -215,34 +295,38 @@ public class OrderService {
     public List<OrderDTO> getActiveOrders() {
         return orderRepository.findByStatusIn(List.of(OrderStatus.OPEN, OrderStatus.UNPAID))
                 .stream()
-                .map(orderMapper::toDTO)
+                .map(order -> {
+                    order.getItems().size();
+                    return orderMapper.toDTO(order);
+                })
                 .toList();
     }
 
     public List<OrderDTO> getAllOrders() {
         return orderRepository.findAll().stream()
-                .map(orderMapper::toDTO)
+                .map(order -> {
+                    order.getItems().size();
+                    return orderMapper.toDTO(order);
+                })
                 .collect(Collectors.toList());
     }
 
-    // --- MÉTODOS ADICIONADOS / RESTAURADOS ABAIXO ---
-
-    // Este método é essencial para o OrderItemService recalcular o total do pedido
-    // e para outros serviços que precisam do DTO completo de um pedido por ID.
-    public OrderDTO getOrderDTOById(Long id) { // Renomeado de findById para evitar conflito com o método acima que retorna OrderDTO
-        return orderRepository.findById(id)
-                .map(orderMapper::toDTO)
+    public OrderDTO getOrderDTOById(Long id) {
+        Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new RecordNotFoundException(id, Order.class));
+        order.getItems().size();
+        return orderMapper.toDTO(order);
     }
 
-    // Este método é essencial para o OrderItemService recalcular o total do pedido
     @Transactional
     public void recalculateOrderTotal(Long orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
-        // Carrega os OrderItems associados a este pedido
-        List<OrderItem> orderItems = orderItemRepository.findByOrder(order);
+        List<OrderItem> orderItems = order.getItems();
+        if (orderItems == null) {
+            orderItems = new ArrayList<>();
+        }
 
         BigDecimal total = orderItems.stream()
                 .map(OrderItem::getTotalPrice)
@@ -254,7 +338,6 @@ public class OrderService {
         System.out.println("DEBUG WS Backend: Enviando OrderUpdate (recalculateTotal) para: " + savedOrder.getId() + " - Novo Total: " + savedOrder.getTotalValue());
         webSocketController.sendOrderUpdate(orderMapper.toDTO(savedOrder));
     }
-    // --- FIM DOS MÉTODOS ADICIONADOS / RESTAURADOS ---
 
     @Transactional
     public OrderDTO createOrder(Long tableId, String userCpf) {
@@ -267,13 +350,13 @@ public class OrderService {
                 .table(table)
                 .user(user)
                 .createdAt(LocalDateTime.now())
-                .status(OrderStatus.DRAFT)
+                .status(OrderStatus.OPEN)
                 .totalValue(java.math.BigDecimal.ZERO)
-                .items(Collections.emptyList())
+                .items(new ArrayList<>())
                 .build();
-        order = orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
 
-        OrderDTO orderDTO = orderMapper.toDTO(order);
+        OrderDTO orderDTO = orderMapper.toDTO(savedOrder);
         webSocketController.sendOrderUpdate(orderDTO);
         return orderDTO;
     }
@@ -283,9 +366,6 @@ public class OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
 
-        if (order.getStatus() != OrderStatus.DRAFT) {
-            throw new IllegalStateException("Order is not in DRAFT status and cannot be confirmed.");
-        }
         if (order.getItems().isEmpty()) {
             throw new IllegalStateException("Order has no items and cannot be confirmed.");
         }
@@ -294,33 +374,11 @@ public class OrderService {
         order.getTable().setStatus(TableStatus.OCCUPIED);
         tableRepository.save(order.getTable());
 
-        OrderDTO orderDTO = orderMapper.toDTO(orderRepository.save(order));
+        Order savedOrder = orderRepository.save(order);
+        OrderDTO orderDTO = orderMapper.toDTO(savedOrder);
         webSocketController.sendOrderUpdate(orderDTO);
         webSocketController.sendTableUpdate(restaurantTableMapper.toDTO(order.getTable()));
-        return orderDTO;
-    }
-
-    public List<OrderDTO> getActiveOrdersForWaiter() {
-        List<OrderStatus> activeStatuses = List.of(OrderStatus.OPEN, OrderStatus.UNPAID);
-        return orderRepository.findByStatusIn(activeStatuses).stream()
-                .map(orderMapper::toDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional
-    public OrderDTO updateOrderStatusToPaid(Long orderId, String paymentMethod) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
-
-        if (order.getStatus() == OrderStatus.PAID) {
-            throw new IllegalStateException("Order is already paid.");
-        }
-
-        order.setPaymentMethod(com.rb.TableMaster.model.enums.PaymentMethod.valueOf(paymentMethod));
-        order.setStatus(OrderStatus.PAID);
-        order.setClosedAt(LocalDateTime.now());
-        OrderDTO orderDTO = orderMapper.toDTO(orderRepository.save(order));
-        webSocketController.sendOrderUpdate(orderDTO);
+        notificationService.publishNewOrder(order.getTable().getId(), order.getId());
         return orderDTO;
     }
 
@@ -332,18 +390,51 @@ public class OrderService {
             throw new IllegalStateException("Order is already marked as unpaid.");
         }
         order.setStatus(OrderStatus.UNPAID);
-        orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
 
-        if (eventPublisher != null) {
-            eventPublisher.publishAccountRequest(order.getTable().getId(), order.getId());
-        }
-        OrderDTO orderDTO = orderMapper.toDTO(orderRepository.save(order));
+        OrderDTO orderDTO = orderMapper.toDTO(savedOrder);
         webSocketController.sendOrderUpdate(orderDTO);
         return orderDTO;
     }
 
     public Optional<OrderDTO> getCurrentDraftOrderByUser(String userCpf) {
-        return orderRepository.findByUserCpfAndStatus(userCpf, OrderStatus.DRAFT)
-                .map(orderMapper::toDTO);
+        return orderRepository.findByUserCpfAndStatus(userCpf, OrderStatus.OPEN)
+                .map(order -> {
+                    order.getItems().size();
+                    return orderMapper.toDTO(order);
+                });
+    }
+
+    @Transactional
+    public OrderDTO requestPayment(Long orderId, PaymentMethod requestedPaymentMethod) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
+
+        if (order.getStatus() == OrderStatus.PAID) {
+            throw new IllegalStateException("Pedido já está pago.");
+        }
+        if (order.getStatus() == OrderStatus.UNPAID) {
+            return orderMapper.toDTO(order);
+        }
+
+        order.setStatus(OrderStatus.UNPAID);
+        Order updatedOrder = orderRepository.save(order);
+
+        OrderDTO updatedOrderDTO = orderMapper.toDTO(updatedOrder);
+        webSocketController.sendOrderUpdate(updatedOrderDTO);
+        return updatedOrderDTO;
+    }
+
+    @Transactional
+    public OrderDTO confirmAndOpenOrder(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RecordNotFoundException(orderId, Order.class));
+
+        order.setStatus(OrderStatus.OPEN);
+        Order savedOrder = orderRepository.save(order);
+        OrderDTO orderDTO = orderMapper.toDTO(savedOrder);
+
+        webSocketController.sendOrderUpdate(orderDTO);
+        return orderDTO;
     }
 }

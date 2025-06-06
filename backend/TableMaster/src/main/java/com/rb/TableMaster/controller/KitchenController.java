@@ -45,8 +45,18 @@ public class KitchenController {
         return kitchenService.markAsReady(itemId);
     }
 
+    @PatchMapping("/item/{itemId}/mark-delivered")
+    public OrderItemDTO markItemAsDelivered(@PathVariable Long itemId) {
+        return kitchenService.markAsDelivered(itemId);
+    }
+
     @PatchMapping("/menu-item/{id}/toggle-availability")
     public MenuItemDTO toggleMenuItemAvailability(@PathVariable Long id, @RequestParam boolean available) {
         return menuItemService.toggleMenuItemAvailability(id, available);
+    }
+
+    @GetMapping("/delivered")
+    public List<OrderItemDTO> getDeliveredItems() {
+        return kitchenService.getDeliveredItems();
     }
 }

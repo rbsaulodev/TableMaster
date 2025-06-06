@@ -23,7 +23,7 @@ public class RestaurantTable {
     @Column
     @Min(1)
     @Max(100)
-    private int number;
+    private Integer number;
 
     @Column
     @Min(1)

@@ -37,7 +37,7 @@ public class WaiterService {
     @Transactional
     public OrderItemDTO deliverItem(Long itemId) {
         OrderItemDTO item = orderItemService.updateItemStatus(itemId, OrderItemStatus.DELIVERED);
-        notificationService.markAsRead(itemId);
+        notificationService.markAsReadByItemId(itemId);
         webSocketController.sendOrderItemUpdate(item);
         return item;
     }

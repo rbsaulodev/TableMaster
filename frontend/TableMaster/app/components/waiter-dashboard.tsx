@@ -1,1512 +1,801 @@
-// src/app/components/waiter-dashboard.tsx
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import {
-  LogOut,
-  MapPin,
-  FileText,
-  Package,
-  Clock,
-  Users,
-  TrendingUp,
-  Minus,
-  Star,
-  CheckCircle,
-  Utensils,
-  DollarSign,
-  Settings,
-  ArrowUp,
-  ArrowDown,
-  CreditCard,
-  Banknote,
-  Smartphone,
-  Eye,
-  UserPlus,
-  Calendar,
-  AlertTriangle,
-  Timer,
-  Coffee,
-  Search,
-  Award,
-  Plus,
-  Trash2,
-  ListOrdered,
-  ChefHat,
-} from "lucide-react"
-
+import { LogOut, MapPin, FileText, Package, Clock, Users, Star, CheckCircle, Utensils, DollarSign, Settings, CreditCard, UserPlus, Calendar, Timer, Plus, Trash2, ListOrdered, ChefHat, Receipt } from "lucide-react"
 import { AuthResponseData } from "@/app/types/auth"
+import { Client as StompClient, IMessage } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const BASE_URL = "http://localhost:8080/api"
+const BASE_URL_WS = "ws://localhost:8080/ws"
+const BASE_URL_SOCKJS_HTTP = "http://localhost:8080/ws"
 
+// --- Interfaces ---
 interface OrderItemDTO {
-  id: number;
-  orderId: number;
-  menuItemId: number;
-  menuItemName: string;
-  menuItemDescription: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  status: "PENDING" | "PREPARING" | "READY" | "DELIVERED";
-  createdAt: string;
+    id: number; orderId: number; menuItemId: number; menuItemName: string; menuItemDescription: string; quantity: number; unitPrice: number; totalPrice: number; status: "PENDING" | "PREPARING" | "READY" | "DELIVERED"; createdAt: string;
 }
-
 interface OrderDTO {
-  id: number;
-  tableId: number;
-  tableName: string;
-  userCpf: string;
-  userName: string;
-  items: OrderItemDTO[];
-  createdAt: string;
-  status: "OPEN" | "UNPAID" | "PAID";
-  totalValue: number;
-  paymentMethod?: "CASH" | "CARD" | "PIX";
-  closedAt?: string;
-  reservedTime?: string;
+    id: number; tableId: number; tableName: string; userCpf: string; userName: string; items: OrderItemDTO[]; createdAt: string; status: "OPEN" | "UNPAID" | "PAID"; totalValue: number; paymentMethod?: PaymentMethod; requestedPaymentMethod?: PaymentMethod; closedAt?: string; reservedTime?: string;
 }
-
 interface RestaurantTableDTO {
-  id: number;
-  number: number;
-  status: "AVAILABLE" | "OCCUPIED" | "RESERVED";
-  capacity: number;
-  orders?: OrderDTO[];
+    id: number; number: number; status: "AVAILABLE" | "OCCUPIED" | "RESERVED"; capacity: number; orders?: OrderDTO[];
 }
-
 interface MenuItemDTO {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  imageUrl?: string;
-  category: "APPETIZERS" | "MAIN_COURSES" | "DESSERTS" | "DRINKS";
-  drinkType?: "WATER" | "SODA" | "NATURAL_JUICE" | "BEER" | "WINE" | "COCKTAIL";
-  preparationTime?: number;
-  difficulty?: "easy" | "medium" | "difficult";
-  available?: boolean;
-  ingredients?: string[];
-  allergens?: { name: string; severity: "low" | "medium" | "high" }[];
+    id: number; name: string; description: string; price: number; imageUrl?: string; category: "APPETIZERS" | "MAIN_COURSES" | "DESSERTS" | "DRINKS";
 }
-
-interface CreateOrderItemRequest {
-  menuItemId: number;
-  quantity: number;
-}
-
 type PaymentMethod = "CASH" | "CARD" | "PIX";
-
+interface AccountRequestNotificationDTO {
+    id: number; orderId: number; tableId: number; tableNumber: string; userName: string; requestedPaymentMethod: PaymentMethod; timestamp: string; message: string; isRead: boolean; notificationType?: string;
+}
 interface WaiterDashboardProps {
-  onLogout: () => void;
-  authToken: string;
-  currentUserData: AuthResponseData;
+    onLogout: () => void; authToken: string; currentUserData: AuthResponseData;
 }
 
-export default function WaiterDashboard({ onLogout, authToken, currentUserData }: WaiterDashboardProps) {
-  const { toast } = useToast()
-  const [currentTime, setCurrentTime] = useState(new Date())
-  const [activeSection, setActiveSection] = useState("dashboard")
-
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | ''>('')
-  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<OrderDTO | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filterStatus, setFilterStatus] = useState("all")
-  const [newOrderTableId, setNewOrderTableId] = useState<number | null>(null)
-  const [newOrderItems, setNewOrderItems] = useState<
-    Array<{ id: number; name: string; price: number; quantity: number }>
-  >([])
-  const [selectedMenuItemId, setSelectedMenuItemId] = useState("")
-
-  const [tables, setTables] = useState<RestaurantTableDTO[]>([])
-  const [activeOrders, setActiveOrders] = useState<OrderDTO[]>([])
-  const [pendingItems, setPendingItems] = useState<OrderItemDTO[]>([])
-  const [preparingItems, setPreparingItems] = useState<OrderItemDTO[]>([])
-  const [readyItems, setReadyItems] = useState<OrderItemDTO[]>([])
-  const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([])
-  const [accountRequests, setAccountRequests] = useState<any[]>([])
-
-  const [deliveredOrders, setDeliveredOrders] = useState<OrderDTO[]>([])
-  const [reservations, setReservations] = useState<any[]>([])
-
-  const [dailySales, setDailySales] = useState({
-    totalSales: 0,
-    totalOrders: 0,
-    avgOrderValue: 0,
-    cashSales: 0,
-    cardSales: 0,
-    pixSales: 0,
-    myCommission: 0,
-    commissionRate: 5,
-    topItems: [],
-  })
-
-  const formatSafeDate = (dateString: string | undefined) => {
+// --- Funções Auxiliares (Fora do Componente) ---
+const getPaymentMethodText = (method?: PaymentMethod): string => {
+    if (!method) return "N/A";
+    const map: Record<PaymentMethod, string> = { CASH: "Dinheiro", CARD: "Cartão", PIX: "PIX" };
+    return map[method] || "N/A";
+};
+const getOrderItemStatusText = (status: OrderItemDTO["status"]) => ({PENDING: "Novo", PREPARING: "Em Preparo", READY: "Pronto", DELIVERED: "Entregue"}[status] || status);
+const getOrderItemStatusColor = (status: OrderItemDTO["status"]) => ({PENDING: "bg-blue-500", PREPARING: "bg-amber-500", READY: "bg-green-500", DELIVERED: "bg-green-600"}[status] || "bg-gray-400");
+const getTableStatusText = (status: RestaurantTableDTO["status"]) => ({AVAILABLE: "Disponível", OCCUPIED: "Ocupada", RESERVED: "Reservada"}[status] || status);
+const formatSafeDate = (dateString: string | undefined | null, includeTime: boolean = true) => {
     if (!dateString) return 'N/A';
     try {
-      const date = new Date(dateString)
-      return isNaN(date.getTime()) ? 'N/A' : date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    } catch {
-      return 'N/A'
-    }
-  }
-
-  const getElapsedTime = (createdAt: string | undefined) => {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return 'N/A';
+        return includeTime ? date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString('pt-BR');
+    } catch { return 'N/A'; }
+}
+const getElapsedTime = (createdAt: string | undefined) => {
     if (!createdAt) return 0;
     try {
-      const itemDate = new Date(createdAt)
-      if (isNaN(itemDate.getTime())) return 0
-      const elapsed = Math.floor((new Date().getTime() - itemDate.getTime()) / (1000 * 60))
-      return elapsed
-    } catch {
-      return 0
-    }
-  }
-
-  // --- FUNÇÕES DE FETCH (Reordenadas para definir antes de fetchInitialData) ---
-  const fetchTables = useCallback(async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/waiter/tables`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro ao carregar mesas (raw response):", errorText);
-        throw new Error("Failed to fetch tables.");
-      }
-      const data: RestaurantTableDTO[] = await response.json()
-      setTables(data)
-    } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" })
-    }
-  }, [authToken, toast])
-
-  const fetchActiveOrders = useCallback(async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/waiter/orders/active`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro ao carregar pedidos ativos (raw response):", errorText);
-        throw new Error("Failed to fetch active orders.");
-      }
-      const data: OrderDTO[] = await response.json()
-      setActiveOrders(data)
-      const totalSales = data.filter(o => o.status === "PAID").reduce((sum, order) => sum + order.totalValue, 0)
-      setDailySales((prev) => ({
-        ...prev,
-        totalOrders: data.length,
-        totalSales,
-        avgOrderValue: data.length > 0 ? totalSales / data.length : 0,
-        myCommission: totalSales * (prev.commissionRate / 100),
-      }))
-    } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" })
-    }
-  }, [authToken, toast])
-
-  const fetchPendingItems = useCallback(async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/kitchen/pending`, { // Kitchen endpoint
-        headers: { "Authorization": `Bearer ${authToken}` },
-      })
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro ao carregar itens pendentes (raw response):", errorText);
-        throw new Error("Failed to fetch pending items.");
-      }
-      const data: OrderItemDTO[] = await response.json()
-      setPendingItems(data)
-    } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" })
-    }
-  }, [authToken, toast])
-
-  const fetchPreparingItems = useCallback(async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/kitchen/preparing`, { // Kitchen endpoint
-        headers: { "Authorization": `Bearer ${authToken}` },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (!errorText) {
-          throw new Error("O servidor retornou uma resposta vazia para itens em preparo");
-        }
-        console.error("Erro ao carregar itens em preparo (raw response):", errorText);
-        throw new Error("Failed to fetch preparing items.");
-      }
-      
-      const data: OrderItemDTO[] = await response.json();
-      if (Array.isArray(data)) {
-        setPreparingItems(data);
-      } else {
-        console.warn("Dados inválidos recebidos para itens em preparo:", data);
-        setPreparingItems([]);
-      }
-    } catch (error: any) {
-      console.error("Erro ao buscar itens em preparo:", error);
-      toast({ 
-        title: "Erro", 
-        description: error.message || "Erro ao carregar itens em preparo",
-        variant: "destructive" 
-      });
-      setPreparingItems([]);
-    }
-  }, [authToken, toast]);
-
-  const fetchReadyItemsAPI = useCallback(async () => { // Kitchen endpoint (ready for delivery)
-    try {
-      const response = await fetch(`${BASE_URL}/kitchen/ready`, {
-        headers: { "Authorization": `Bearer ${authToken}` },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (!errorText) {
-          throw new Error("O servidor retornou uma resposta vazia para itens prontos");
-        }
-        console.error("Erro ao carregar itens prontos (raw response):", errorText);
-        throw new Error("Failed to fetch ready items.");
-      }
-      
-      const data: OrderItemDTO[] = await response.json();
-      if (Array.isArray(data)) {
-        setReadyItems(data);
-      } else {
-        console.warn("Dados inválidos recebidos para itens prontos:", data);
-        setReadyItems([]);
-      }
-    } catch (error: any) {
-      console.error("Erro ao buscar itens prontos:", error);
-      toast({ 
-        title: "Erro", 
-        description: error.message || "Erro ao carregar itens prontos",
-        variant: "destructive" 
-      });
-      setReadyItems([]);
-    }
-  }, [authToken, toast]);
-
-  const fetchMenuItems = useCallback(async () => { // MOVIDO PARA CIMA
-    try {
-      const response = await fetch(`${BASE_URL}/menu`, {
-        headers: { "Authorization": `Bearer ${authToken}` },
-      })
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro ao carregar cardápio (raw response):", errorText);
-        throw new Error("Failed to fetch menu items.");
-      }
-      const data: MenuItemDTO[] = await response.json()
-      setMenuItems(data.map(item => ({ ...item, available: true })));
-    } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" })
-    }
-  }, [authToken, toast])
-
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/waiter/notifications`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro ao carregar notificações (raw response):", errorText);
-        throw new Error("Failed to fetch notifications.");
-      }
-      const data = await response.json()
-      setAccountRequests(
-        data.map((notif: any) => ({
-          id: notif.id,
-          tableId: notif.tableId,
-          table: notif.tableNumber,
-          customerName: `Mesa ${notif.tableNumber}`,
-          requestTime: new Date(notif.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-          status: "pending",
-        })),
-      )
-    } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" })
-    }
-  }, [authToken, toast])
-
-  // --- FIM DAS FUNÇÕES DE FETCH ---
-
-  const fetchInitialData = useCallback(async () => {
-    if (!authToken) {
-        console.warn("No authentication token found. Cannot fetch initial data.");
-        toast({
-            title: "Erro de autenticação",
-            description: "Você não está logado. Por favor, faça login novamente.",
-            variant: "destructive"
-        });
-        return;
-    }
-
-    try {
-      await Promise.all([
-        fetchTables().catch(e => console.error("Erro ao buscar mesas:", e)),
-        fetchActiveOrders().catch(e => console.error("Erro ao buscar pedidos ativos:", e)),
-        fetchPendingItems().catch(e => console.error("Erro ao buscar itens pendentes:", e)),
-        fetchPreparingItems().catch(e => console.error("Erro ao buscar itens em preparo:", e)),
-        fetchReadyItemsAPI().catch(e => console.error("Erro ao buscar itens prontos:", e)),
-        fetchMenuItems().catch(e => console.error("Erro ao buscar itens do menu:", e)),
-        fetchNotifications().catch(e => console.error("Erro ao buscar notificações:", e))
-      ]);
-    } catch (error) {
-      console.error("Erro geral ao buscar dados iniciais:", error);
-      toast({
-        title: "Erro de conexão",
-        description: "Ocorreu um problema ao carregar os dados. Verifique sua conexão e tente novamente.",
-        variant: "destructive"
-      });
-    }
-  }, [authToken, fetchTables, fetchActiveOrders, fetchPendingItems, fetchPreparingItems, fetchReadyItemsAPI, fetchMenuItems, fetchNotifications, toast]);
-
-  useEffect(() => {
-    fetchInitialData()
-    const interval = setInterval(fetchInitialData, 10000)
-    return () => clearInterval(interval)
-  }, [fetchInitialData])
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [])
-
-  const stats = {
-    totalTables: tables.length,
-    occupiedTables: tables.filter((t) => t.status === "OCCUPIED").length,
-    availableTables: tables.filter((t) => t.status === "AVAILABLE").length,
-    reservedTables: tables.filter((t) => t.status === "RESERVED").length,
-    totalComandas: activeOrders.length,
-    newOrders: activeOrders.filter((o) => o.status === "OPEN").length,
-    preparingOrders: activeOrders.filter((o) => o.items.some(item => item.status === "PREPARING")).length,
-    readyOrders: activeOrders.filter((o) => o.items.some(item => item.status === "READY")).length,
-    deliveredToday: deliveredOrders.length,
-    totalRevenue: activeOrders.filter(o => o.status === "PAID").reduce((sum, order) => sum + order.totalValue, 0),
-    avgServiceTime: 0,
-    occupancyRate: tables.length > 0 ? Math.round((tables.filter((t) => t.status === "OCCUPIED" || t.status === "RESERVED").length / tables.length) * 100) : 0,
-    revenueGrowth: 0,
-    serviceTimeChange: 0,
-    ordersGrowth: 0,
-    accountRequests: accountRequests.length,
-  }
-
-  const handleStatusChange = async (itemId: number, currentStatus: OrderItemDTO["status"], targetStatus: "PREPARING" | "READY") => {
-    let endpoint = "";
-    if (targetStatus === "PREPARING") {
-      endpoint = `/kitchen/item/${itemId}/start-preparing`; 
-    } else if (targetStatus === "READY") {
-      endpoint = `/kitchen/item/${itemId}/mark-ready`; 
-    } else {
-      toast({ title: "Erro de Status", description: "Status de destino inválido.", variant: "destructive" });
-      return;
-    }
-
-    console.log(`Attempting to send PATCH to: ${BASE_URL}${endpoint}`);
-    console.log(`Auth Token: ${authToken ? 'Present' : 'Missing'}`); // Debugging token presence
-
-    try {
-      const response = await fetch(`${BASE_URL}${endpoint}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json", // Adicionado, pode ser necessário para PATCH
-          "Authorization": `Bearer ${authToken}`
-        },
-      })
-      if (!response.ok) {
-        const errorText = await response.text(); // Capture raw text for more info
-        let errorMessage = `Failed to update item status to ${targetStatus}.`;
-        try {
-            const errorData = JSON.parse(errorText);
-            errorMessage = errorData.message || errorMessage;
-        } catch (parseError) {
-            // If response is not JSON, use raw text
-            console.error("Failed to parse error response as JSON:", errorText);
-            errorMessage = errorText || errorMessage;
-        }
-        console.error(`Error response for ${endpoint}:`, response.status, errorText);
-        throw new Error(errorMessage);
-      }
-      toast({ title: "Status Atualizado", description: `Item ${itemId} agora está ${getOrderItemStatusText(targetStatus as OrderItemDTO["status"])}. ✅` });
-      fetchInitialData();
-    } catch (error: any) {
-      toast({ title: "Erro ao Atualizar Status", description: error.message || "Ocorreu um erro desconhecido.", variant: "destructive" });
-      console.error("Full error object:", error);
-    }
-  }
-
-  const markOrderAsDelivered = async (order: OrderDTO) => {
-    if (!selectedPaymentMethod) {
-      toast({
-        title: "Selecione o método de pagamento",
-        description: "É necessário informar como o cliente irá pagar.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const payResponse = await fetch(`${BASE_URL}/waiter/order/${order.id}/pay?paymentMethod=${selectedPaymentMethod}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${authToken}` },
-      })
-
-      if (!payResponse.ok) {
-        const errorData = await payResponse.json()
-        throw new Error(errorData.message || "Erro ao processar pagamento do pedido.")
-      }
-
-      for (const item of order.items) {
-        const deliverResponse = await fetch(`${BASE_URL}/waiter/item/${item.id}/deliver`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${authToken}` },
-        })
-        if (!deliverResponse.ok) {
-          const errorData = await deliverResponse.json()
-          console.error(`Failed to deliver item ${item.id}:`, errorData)
-          toast({
-            title: "Erro ao entregar item",
-            description: `Falha ao marcar "${item.menuItemName}" como entregue.`,
-            variant: "destructive",
-          })
-        }
-      }
-
-      const deliveredOrderUpdated = {
-        ...order,
-        closedAt: new Date().toISOString(),
-        paymentMethod: selectedPaymentMethod,
-        status: "PAID" as "PAID"
-      }
-      setDeliveredOrders((prev) => [deliveredOrderUpdated, ...prev])
-
-      setSelectedPaymentMethod("")
-      setSelectedOrderForPayment(null)
-
-      toast({
-        title: "Pedido entregue e pago! ✅",
-        description: `Pedido da Mesa ${order.tableName} foi marcado como entregue e pago.`,
-      })
-      fetchInitialData()
-    } catch (error: any) {
-      toast({
-        title: "Erro ao finalizar pedido",
-        description: error.message || "Ocorreu um erro ao finalizar o pedido.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const updateTableStatus = async (tableId: number, newStatus: RestaurantTableDTO["status"], guests?: number) => {
-    try {
-      let response;
-      let endpoint = '';
-      let body: any = {};
-
-      endpoint = `${BASE_URL}/table/${tableId}`;
-      body = {
-        id: tableId,
-        number: tables.find(t => t.id === tableId)?.number,
-        status: newStatus,
-        capacity: tables.find(t => t.id === tableId)?.capacity,
-      };
-
-      response = await fetch(endpoint, {
-        method: "PUT",
-        headers: {
-          "Authorization": `Bearer ${authToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body),
-      });
+        const itemDate = new Date(createdAt);
+        if (isNaN(itemDate.getTime())) return 0;
+        return Math.floor((new Date().getTime() - itemDate.getTime()) / (1000 * 60));
+    } catch { return 0; }
+}
 
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || `Failed to update table status to ${getTableStatusText(newStatus)}.`)
-      }
-
-      toast({
-        title: "Status atualizado ✅",
-        description: `Mesa ${tables.find((t) => t.id === tableId)?.number} agora está ${getTableStatusText(newStatus).toLowerCase()}.`,
-      })
-      fetchInitialData()
-    } catch (error: any) {
-      toast({
-        title: "Erro ao atualizar mesa",
-        description: error.message || "Ocorreu um erro ao atualizar o status da mesa.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const confirmReservation = async (reservation: any) => {
-    try {
-      await updateTableStatus(reservation.tableId, "RESERVED");
-      setReservations((prev) => prev.filter((res) => res.id !== reservation.id));
-      toast({
-        title: "Reserva confirmada! ✅",
-        description: `Reserva para Mesa ${reservation.table} foi confirmada.`,
-      });
-      fetchInitialData();
-    } catch (error: any) {
-      toast({
-        title: "Erro ao confirmar reserva",
-        description: error.message || "Não foi possível confirmar a reserva.",
-        variant: "destructive",
-      });
-    }
-  }
-
-  const addItemToOrder = () => {
-    if (!selectedMenuItemId) return
-
-    const menuItem = menuItems.find((item) => item.id === Number.parseInt(selectedMenuItemId))
-    if (!menuItem) return
-
-    const existingItem = newOrderItems.find((item) => item.id === menuItem.id)
-    if (existingItem) {
-      setNewOrderItems((prev) =>
-        prev.map((item) => (item.id === menuItem.id ? { ...item, quantity: item.quantity + 1 } : item)),
-      )
-    } else {
-      setNewOrderItems((prev) => [...prev, { ...menuItem, quantity: 1 }])
-    }
-
-    setSelectedMenuItemId("")
-    toast({ title: "Item adicionado!", description: `${menuItem.name} adicionado ao novo pedido.` });
-  }
-
-  const removeItemFromOrder = (itemId: number) => {
-    setNewOrderItems((prev) => prev.filter((item) => item.id !== itemId))
-    toast({ title: "Item removido", description: "Item removido do novo pedido." });
-  }
-
-  const createNewOrder = async () => {
-    if (!newOrderTableId || newOrderItems.length === 0) {
-      toast({
-        title: "Erro",
-        description: "Selecione uma mesa e adicione itens ao pedido.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const createOrderResponse = await fetch(`${BASE_URL}/orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          tableId: newOrderTableId,
-          userCpf: currentUserData.cpf,
-          userName: currentUserData.fullName,
-        } as Partial<OrderDTO>),
-      })
-
-      if (!createOrderResponse.ok) {
-        const errorData = await createOrderResponse.json()
-        throw new Error(errorData.message || "Erro ao criar o pedido principal.")
-      }
-      const newOrder: OrderDTO = await createOrderResponse.json()
-
-      for (const item of newOrderItems) {
-        const orderItemRequest: CreateOrderItemRequest = {
-          menuItemId: item.id,
-          quantity: item.quantity,
-        }
-        const addItemsResponse = await fetch(`${BASE_URL}/order-items?orderId=${newOrder.id}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${authToken}`,
-          },
-          body: JSON.stringify(orderItemRequest),
-        })
-
-        if (!addItemsResponse.ok) {
-          const errorData = await addItemsResponse.json()
-          console.error(`Failed to add item ${item.name}:`, errorData)
-          toast({
-            title: "Erro ao adicionar item",
-            description: `Falha ao adicionar "${item.name}" ao pedido.`,
-            variant: "destructive",
-          })
-        }
-      }
-
-      await updateTableStatus(newOrderTableId, "OCCUPIED");
-
-      setNewOrderTableId(null)
-      setNewOrderItems([])
-
-      toast({
-        title: "Pedido criado! 🎉",
-        description: `Novo pedido para Mesa ${tables.find(t => t.id === newOrderTableId)?.number} foi enviado.`,
-      })
-      fetchInitialData()
-    } catch (error: any) {
-      toast({
-        title: "Erro ao criar pedido",
-        description: error.message || "Ocorreu um erro ao criar o pedido.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleAccountRequestDelivery = async (notificationId: number, tableId: number) => {
-    setAccountRequests((prev) => prev.filter((req) => req.id !== notificationId))
-    toast({
-      title: "Conta entregue! 💳",
-      description: `Notificação de conta da mesa ${tables.find(t => t.id === tableId)?.number} foi processada.`,
+// --- Componente ---
+export default function WaiterDashboard({ onLogout, authToken, currentUserData }: WaiterDashboardProps) {
+    const { toast } = useToast()
+    const [currentTime, setCurrentTime] = useState(new Date())
+    const [activeSection, setActiveSection] = useState("dashboard")
+    const [selectedPaymentMethodForOrder, setSelectedPaymentMethodForOrder] = useState<Record<number, PaymentMethod | ''>>({});
+    const [newOrderTableId, setNewOrderTableId] = useState<number | null>(null)
+    const [newOrderItems, setNewOrderItems] = useState<Array<{ id: number; name: string; price: number; quantity: number }>>([])
+    const [selectedMenuItemId, setSelectedMenuItemId] = useState("")
+    const [tables, setTables] = useState<RestaurantTableDTO[]>([])
+    const [activeOrders, setActiveOrders] = useState<OrderDTO[]>([])
+    const [pendingItems, setPendingItems] = useState<OrderItemDTO[]>([])
+    const [preparingItems, setPreparingItems] = useState<OrderItemDTO[]>([])
+    const [readyItems, setReadyItems] = useState<OrderItemDTO[]>([])
+    const [menuItems, setMenuItems] = useState<MenuItemDTO[]>([])
+    const [accountRequestNotifications, setAccountRequestNotifications] = useState<AccountRequestNotificationDTO[]>([]);
+    const [deliveredOrders, setDeliveredOrders] = useState<OrderDTO[]>([])
+    const [dailySales, setDailySales] = useState({
+        totalSales: 0,
+        totalOrders: 0,
+        avgOrderValue: 0,
+        cashSales: 0,
+        cardSales: 0,
+        pixSales: 0,
+        myCommission: 0,
+        commissionRate: 5 // default commission rate of 5%
     })
-    fetchNotifications();
-  }
 
-  const filteredOrders = activeOrders.filter((order) => {
-    const matchesSearch =
-      searchTerm && (
-        order.tableName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.items.some((item) => item.menuItemName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        order.userName.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    const matchesStatus = filterStatus === "all" || order.status === filterStatus;
-    return (searchTerm ? matchesSearch : true) && matchesStatus;
-  });
+    const stompClientRef = useRef<StompClient | null>(null);
 
-  const getOrderItemStatusColor = (status: OrderItemDTO["status"]) => {
-    switch (status) {
-      case "PENDING": return "bg-blue-500";
-      case "PREPARING": return "bg-amber-500";
-      case "READY": return "bg-green-500";
-      case "DELIVERED": return "bg-gray-500";
-      default: return "bg-gray-400";
-    }
-  };
+    const fetchAPIData = useCallback(async (endpoint: string, setter: Function, errorMessage: string) => {
+        if (!authToken) return;
+        try {
+            const response = await fetch(`${BASE_URL}${endpoint}`, { headers: { Authorization: `Bearer ${authToken}` } });
+            
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => "Erro desconhecido");
+                throw new Error(`${errorMessage} (Status: ${response.status} - ${errorText})`);
+            }
+            const data = await response.json();
+            setter(Array.isArray(data) ? data : []);
+        } catch (e: any) {
+            toast({ title: `Erro ao buscar dados`, description: e.message, variant: "destructive" });
+            setter([]);
+        }
+    }, [authToken, toast]);
 
-  const getOrderItemStatusText = (status: OrderItemDTO["status"]) => {
-    switch (status) {
-      case "PENDING": return "Novo";
-      case "PREPARING": return "Em Preparo";
-      case "READY": return "Pronto";
-      case "DELIVERED": return "Entregue";
-      default: return String(status);
-    }
-  };
+    const sortOrderItemFn = (a: OrderItemDTO, b: OrderItemDTO) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 
-  const getTableStatusColor = (status: RestaurantTableDTO["status"]) => {
-    switch (status) {
-      case "AVAILABLE": return "bg-green-100 text-green-800 border-green-200";
-      case "OCCUPIED": return "bg-red-100 text-red-800 border-red-200";
-      case "RESERVED": return "bg-amber-100 text-amber-800 border-amber-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
-    }
-  };
+    // Funções de fetch HTTP
+    const fetchTables = useCallback(() => fetchAPIData("/waiter/tables", setTables, "Falha ao buscar mesas."), [fetchAPIData]);
+    const fetchMenuItems = useCallback(() => fetchAPIData("/menu", setMenuItems, "Falha ao buscar cardápio."), [fetchAPIData]); 
+    const fetchAccountRequestNotifications = useCallback(() => fetchAPIData("/waiter/notifications/account-requests", setAccountRequestNotifications, "Falha ao buscar solicitações de conta."), [fetchAPIData]);
+    const fetchPaidOrders = useCallback(() => fetchAPIData("/orders/paid", setDeliveredOrders, "Falha ao buscar pedidos pagos."), [fetchAPIData]);
+    
+    // ATENÇÃO: fetchActiveOrders agora também popula as listas de itens
+    const fetchActiveOrders = useCallback(async () => {
+        if (!authToken) return;
+        try {
+            const response = await fetch(`${BASE_URL}/waiter/orders/active`, { headers: { Authorization: `Bearer ${authToken}` } });
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => "Erro desconhecido");
+                throw new Error(`Falha ao buscar pedidos ativos. (Status: ${response.status} - ${errorText})`);
+            }
+            const data: OrderDTO[] = await response.json();
+            setActiveOrders(data);
 
-  const getTableStatusText = (status: RestaurantTableDTO["status"]) => {
-    switch (status) {
-      case "AVAILABLE": return "Disponível";
-      case "OCCUPIED": return "Ocupada";
-      case "RESERVED": return "Reservada";
-      default: return String(status);
-    }
-  };
+            const pending: OrderItemDTO[] = [];
+            const preparing: OrderItemDTO[] = [];
+            const ready: OrderItemDTO[] = [];
 
-  const getOrderPaymentMethodText = (method: PaymentMethod | undefined) => {
-    switch (method) {
-      case "CASH": return "Dinheiro";
-      case "CARD": return "Cartão";
-      case "PIX": return "PIX";
-      default: return "N/A";
-    }
-  };
+            data.forEach(order => {
+                order.items.forEach(item => {
+                    if (item.status === "PENDING") {
+                        pending.push(item);
+                    } else if (item.status === "PREPARING") {
+                        preparing.push(item);
+                    } else if (item.status === "READY") {
+                        ready.push(item);
+                    }
+                });
+            });
+            setPendingItems(pending.sort(sortOrderItemFn));
+            setPreparingItems(preparing.sort(sortOrderItemFn));
+            setReadyItems(ready.sort(sortOrderItemFn));
+            
+        } catch (e: any) {
+            toast({ title: `Erro ao buscar dados`, description: e.message, variant: "destructive" });
+            setActiveOrders([]);
+            setPendingItems([]);
+            setPreparingItems([]);
+            setReadyItems([]);
+        }
+    }, [authToken, toast]);
 
-  const OrderItemCard = ({ item, showActions = true }: { item: OrderItemDTO; showActions?: boolean }) => {
-    const relatedOrder = activeOrders.find(order => order.id === item.orderId);
-    const orderTableNumber = relatedOrder?.tableName || 'N/A';
-    const orderWaiter = relatedOrder?.userName || 'N/A';
+    // As chamadas HTTP para /kitchen/pending, /kitchen/preparing, /kitchen/ready podem ser removidas daqui
+    // se você confiar totalmente na extração de itens de `fetchActiveOrders` e nos WebSockets.
+    // Para simplificar e evitar chamadas HTTP redundantes, podemos removê-las se a extração de OrderItems
+    // do OrderDTO for a principal fonte.
+    // Se você ainda quiser que elas busquem explicitamente (por exemplo, para resync forçado), mantenha.
+    // Por enquanto, vamos manter a chamada consolidada em fetchActiveOrders.
+    // Removendo as chamadas diretas para getPendingItems, getPreparingItems, getReadyItemsAPI do Promise.all
+    // para confiar na extração de OrderItems do OrderDTO principal e nos WebSockets.
 
-    return (
-      <Card className="mb-4 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-lg text-gray-900">Mesa {orderTableNumber}</CardTitle>
-              <Badge className={`${getOrderItemStatusColor(item.status)} text-white`}>
-                {getOrderItemStatusText(item.status)}
-              </Badge>
-            </div>
-            <div className="text-right text-sm text-gray-600">
-              <div>Item: {item.menuItemName} (x{item.quantity})</div>
-              <div>Iniciado: {formatSafeDate(item.createdAt)}</div>
-              <div className="flex items-center gap-1 justify-end">
-                <Timer className="w-3 h-3" />
-                {getElapsedTime(item.createdAt)} min
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-medium mb-2">Detalhes do Item:</h4>
-              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                <li>{item.menuItemDescription}</li>
-              </ul>
-            </div>
+    // --- EFEITOS (LIFECYCLE) ---
 
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Users className="w-4 h-4" />
-              <span>Garçom/Cliente: {orderWaiter}</span>
-            </div>
+    // 1. Busca de dados iniciais via HTTP
+    useEffect(() => {
+        if (!authToken) return;
+        const fetchAllData = async () => {
+            await Promise.all([
+                fetchTables(), 
+                fetchActiveOrders(), // Esta função agora também popula pending/preparing/ready items
+                fetchMenuItems(), 
+                fetchAccountRequestNotifications(), 
+                fetchPaidOrders() 
+            ]).catch(e => { 
+                console.error("Erro ao buscar dados iniciais (Garçom):", e); 
+                toast({ title: "Erro de Conexão", description: "Não foi possível carregar os dados iniciais.", variant: "destructive" });
+            });
+        }
+        fetchAllData();
+    }, [authToken, fetchTables, fetchActiveOrders, fetchMenuItems, fetchAccountRequestNotifications, fetchPaidOrders, toast]);
 
-            {showActions && (
-              <div className="flex gap-2 pt-2">
-                {item.status === "PENDING" && (
-                  <Button
-                    onClick={() => handleStatusChange(item.id, item.status, "PREPARING")}
-                    className="bg-amber-500 hover:bg-amber-600 w-full"
-                  >
-                    <ChefHat className="w-4 h-4 mr-2" />
-                    Iniciar Preparo
-                  </Button>
-                )}
-                {item.status === "PREPARING" && (
-                  <Button
-                    onClick={() => handleStatusChange(item.id, item.status, "READY")}
-                    className="bg-green-500 hover:bg-green-600 w-full"
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Marcar como Pronto
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
 
-  const sidebarItems = [
-    {
-      category: "Pedidos",
-      items: [
-        { key: "dashboard", label: "Dashboard", count: null, icon: ListOrdered },
-        { key: "new-orders", label: "Novos Pedidos", count: stats.newOrders, icon: FileText },
-        { key: "preparing", label: "Em Preparo", count: stats.preparingOrders, icon: Clock },
-        { key: "ready", label: "Prontos", count: stats.readyOrders, icon: CheckCircle },
-        { key: "delivered", label: "Entregues", count: stats.deliveredToday, icon: Package },
-        {
-          key: "account-requests",
-          label: "Contas Solicitadas",
-          count: stats.accountRequests,
-          icon: CreditCard,
-        },
-      ],
-    },
-    {
-      category: "Mesas",
-      items: [
-        { key: "occupied-tables", label: "Mesas Ocupadas", count: stats.occupiedTables, icon: Users },
-        { key: "available-tables", label: "Mesas Livres", count: stats.availableTables, icon: MapPin },
-        { key: "reservations", label: "Reservas", count: reservations.length, icon: Star },
-      ],
-    },
-    {
-      category: "Financeiro",
-      items: [
-        { key: "daily-sales", label: "Vendas do Dia", count: null, icon: DollarSign },
-        { key: "commissions", label: "Comissões", count: null, icon: TrendingUp },
-      ],
-    },
-    {
-      category: "Sistema",
-      items: [
-        { key: "settings", label: "Configurações", count: null, icon: Settings },
-        { key: "logout", label: "Sair", count: null, icon: LogOut },
-      ],
-    },
-  ]
+    // 2. Gerenciamento da conexão WebSocket
+    useEffect(() => {
+        if (!authToken) return;
+        
+        if (stompClientRef.current && stompClientRef.current.connected) {
+            console.log('STOMP (Garçom): Cliente já conectado. Ignorando nova ativação.');
+            return;
+        }
 
-  const handleSidebarClick = (key: string) => {
-    if (key === "logout") {
-      onLogout()
-      return
-    }
-    setActiveSection(key)
-  }
+        const client = new StompClient({
+            webSocketFactory: () => new SockJS(BASE_URL_SOCKJS_HTTP) as any, 
+            connectHeaders: { 'Authorization': `Bearer ${authToken}` },
+            debug: (str) => console.log('STOMP (Garçom):', str),
+            reconnectDelay: 5000,
+            onConnect: () => {
+                console.log('Garçom conectado ao WebSocket!');
+                stompClientRef.current = client;
 
-  const renderMainContent = useCallback(() => {
-    if (activeSection === "dashboard") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Visão Geral</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Total de Mesas</p>
-                    <p className="text-2xl font-bold text-blue-600">{stats.totalTables}</p>
-                  </div>
-                  <Utensils className="w-8 h-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Mesas Ocupadas</p>
-                    <p className="text-2xl font-bold text-red-600">{stats.occupiedTables}</p>
-                  </div>
-                  <Users className="w-8 h-8 text-red-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Mesas Livres</p>
-                    <p className="text-2xl font-bold text-green-600">{stats.availableTables}</p>
-                  </div>
-                  <MapPin className="w-8 h-8 text-green-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Comandas Ativas</p>
-                    <p className="text-2xl font-bold text-orange-600">{stats.totalComandas}</p>
-                  </div>
-                  <ListOrdered className="w-8 h-8 text-orange-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Pedidos Novos</p>
-                    <p className="text-2xl font-bold text-purple-600">{stats.newOrders}</p>
-                  </div>
-                  <FileText className="w-8 h-8 text-purple-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Prontos Cozinha</p>
-                    <p className="text-2xl font-bold text-emerald-600">{stats.readyOrders}</p>
-                  </div>
-                  <CheckCircle className="w-8 h-8 text-emerald-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Contas Solicitadas</p>
-                    <p className="text-2xl font-bold text-indigo-600">{stats.accountRequests}</p>
-                  </div>
-                  <CreditCard className="w-8 h-8 text-indigo-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Receita Total (Dia)</p>
-                    <p className="text-2xl font-bold text-amber-600">R$ {stats.totalRevenue.toFixed(2)}</p>
-                  </div>
-                  <DollarSign className="w-8 h-8 text-amber-600" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      );
-    }
+                const sortOrderItemFn = (a: OrderItemDTO, b: OrderItemDTO) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                const sortOrderFn = (a: OrderDTO, b: OrderDTO) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
-    else if (["new-orders", "preparing", "ready", "delivered"].includes(activeSection)) {
-      let itemsToDisplay: OrderItemDTO[] = [];
-      let title = "";
+                // --- Order Items Subscription ---
+                client.subscribe('/topic/order-items', (message: IMessage) => {
+                    try {
+                        const updatedItem: OrderItemDTO = JSON.parse(message.body);
+                        console.log("--- WS /topic/order-items Debug ---");
+                        console.log("RECEIVED RAW MESSAGE BODY:", message.body); 
+                        console.log("PARSED updatedItem:", updatedItem);
+                        console.log("updatedItem.id:", updatedItem.id, "updatedItem.status:", updatedItem.status);
+                        
+                        const updateList = (setter: React.Dispatch<React.SetStateAction<OrderItemDTO[]>>, expectedStatus: OrderItemDTO['status'], listName: string) => {
+                            setter(prev => {
+                                console.log(`[WS Debug] Updating ${listName}. Previous state length: ${prev.length}`);
+                                const filtered = Array.isArray(prev) ? prev.filter(item => item.id !== updatedItem.id) : [];
+                                
+                                if (updatedItem.status === expectedStatus) {
+                                    const newList = [...filtered, updatedItem].sort(sortOrderItemFn);
+                                    console.log(`[WS Debug] ${listName}: Added/Updated item ${updatedItem.id}. New list length: ${newList.length}. Current item status: ${updatedItem.status}`);
+                                    return newList;
+                                } else {
+                                    console.log(`[WS Debug] ${listName}: Item ${updatedItem.id} status is ${updatedItem.status}, filtering out. New list length: ${filtered.length}`);
+                                    return filtered;
+                                }
+                            });
+                        };
 
-      if (activeSection === "new-orders") {
-        title = "Novos Pedidos (Aguardando Cozinha)";
-        itemsToDisplay = activeOrders.flatMap(order => order.items.filter(item => item.status === "PENDING"));
-      } else if (activeSection === "preparing") {
-        title = "Pedidos em Preparo (Cozinha)";
-        itemsToDisplay = activeOrders.flatMap(order => order.items.filter(item => item.status === "PREPARING"));
-      } else if (activeSection === "ready") {
-        title = "Pedidos Prontos (Para Entrega)";
-        itemsToDisplay = activeOrders.flatMap(order => order.items.filter(item => item.status === "READY"));
-      } else if (activeSection === "delivered") {
-        title = "Pedidos Entregues (Hoje)";
-        itemsToDisplay = deliveredOrders.flatMap(order => order.items.filter(item => item.status === "DELIVERED"));
-      }
+                        updateList(setPendingItems, "PENDING", "Pending Items");
+                        updateList(setPreparingItems, "PREPARING", "Preparing Items");
+                        updateList(setReadyItems, "READY", "Ready Items");
 
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {itemsToDisplay.length === 0 ? (
-              <Card className="lg:col-span-3">
-                <CardContent className="p-8 text-center">
-                  <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Nenhum pedido nesta categoria.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              itemsToDisplay.map((item) => (
-                <OrderItemCard key={item.id} item={item} showActions={activeSection !== "delivered"} />
-              ))
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    else if (activeSection === "account-requests") {
-      const ordersWithAccountRequests = activeOrders.filter(order =>
-        order.status === "UNPAID" || (order.status === "OPEN" && accountRequests.some(req => req.tableId === order.tableId))
-      );
-
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Contas Solicitadas</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {ordersWithAccountRequests.length === 0 ? (
-              <Card className="lg:col-span-3">
-                <CardContent className="p-8 text-center">
-                  <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Nenhuma conta solicitada no momento.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              ordersWithAccountRequests.map((order) => (
-                <Card key={order.id} className="border-0 shadow-sm bg-white border-blue-200">
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="text-lg text-gray-900">Mesa {order.tableName}</CardTitle>
-                      <Badge className="bg-blue-500 text-white animate-pulse">
-                        <CreditCard className="h-3 w-3 mr-1" />
-                        Conta Solicitada
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <p className="text-sm text-blue-700 mb-1">Total da Conta</p>
-                      <p className="text-2xl font-bold text-blue-800">R$ {order.totalValue.toFixed(2)}</p>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Solicitado às:</span>
-                        <span className="font-medium">{formatSafeDate(order.createdAt)}</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>Método de Pagamento</Label>
-                      <Select value={selectedPaymentMethod} onValueChange={(value: PaymentMethod) => setSelectedPaymentMethod(value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o método" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="CARD">Cartão</SelectItem>
-                          <SelectItem value="CASH">Dinheiro</SelectItem>
-                          <SelectItem value="PIX">PIX</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="bg-blue-50 p-3 rounded-lg">
-                      <div className="flex items-center gap-2 text-blue-700">
-                        <CreditCard className="h-4 w-4" />
-                        <span className="text-sm font-medium">Cliente aguardando a conta</span>
-                      </div>
-                    </div>
-
-                    <Button
-                      className="w-full bg-blue-600 hover:bg-blue-700"
-                      onClick={() => markOrderAsDelivered(order)}
-                      disabled={!selectedPaymentMethod}
-                    >
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Finalizar e Pagar
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    else if (activeSection === "occupied-tables") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Mesas Ocupadas</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tables.filter((table) => table.status === "OCCUPIED").length === 0 ? (
-              <Card className="lg:col-span-3">
-                <CardContent className="p-8 text-center">
-                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Nenhuma mesa ocupada no momento.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              tables
-                .filter((table) => table.status === "OCCUPIED")
-                .map((table) => {
-                  const currentOrder = activeOrders.find(order => order.tableId === table.id);
-                  return (
-                    <Card key={table.id} className="border-0 shadow-sm bg-white border-red-200">
-                      <CardHeader className="pb-3">
-                        <div className="flex justify-between items-start">
-                          <CardTitle className="text-xl text-gray-900">Mesa {table.number}</CardTitle>
-                          <Badge className="bg-red-100 text-red-800">
-                            <Users className="h-3 w-3 mr-1" />
-                            Ocupada
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-500">Capacidade:</span>
-                            <p className="font-medium">{table.capacity} pessoas</p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Garçom:</span>
-                            <p className="font-medium">{currentOrder?.userName || 'N/A'}</p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Total do Pedido:</span>
-                            <p className="font-medium text-orange-600">R$ {currentOrder?.totalValue.toFixed(2) || '0.00'}</p>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Último pedido:</span>
-                            <p className="font-medium">{formatSafeDate(currentOrder?.createdAt)}</p>
-                          </div>
-                        </div>
-
-                        <div className="border-t pt-4 space-y-2">
-                          {currentOrder && (
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="w-full" onClick={() => setSelectedOrderForPayment(currentOrder)}>
-                                  <DollarSign className="h-4 w-4 mr-2" />
-                                  Fechar Conta
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Fechar Conta da Mesa {table.number}</DialogTitle>
-                                  <DialogDescription>Selecione o método de pagamento para o pedido #{currentOrder.id}</DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <p className="text-2xl font-bold text-center">Total: R$ {currentOrder.totalValue.toFixed(2)}</p>
-                                  <div>
-                                    <Label>Método de Pagamento</Label>
-                                    <Select value={selectedPaymentMethod} onValueChange={(value: PaymentMethod) => setSelectedPaymentMethod(value)}>
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Selecione o método" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="CARD">Cartão</SelectItem>
-                                        <SelectItem value="CASH">Dinheiro</SelectItem>
-                                        <SelectItem value="PIX">PIX</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <Button
-                                    className="w-full bg-green-600 hover:bg-green-700"
-                                    onClick={() => markOrderAsDelivered(currentOrder)}
-                                    disabled={!selectedPaymentMethod}
-                                  >
-                                    Finalizar Pagamento
-                                  </Button>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => updateTableStatus(table.id, "AVAILABLE")}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Liberar Mesa
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    else if (activeSection === "available-tables") {
-      const availableTables = tables.filter((table) => table.status === "AVAILABLE");
-      
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Mesas Livres</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {availableTables.length === 0 ? (
-              <Card className="lg:col-span-4">
-                <CardContent className="p-8 text-center">
-                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Nenhuma mesa disponível no momento.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              availableTables.map((table) => (
-                <Card key={table.id} className="border-0 shadow-sm bg-white border-green-200">
-                  <CardHeader className="pb-3 text-center">
-                    <CardTitle className="text-xl text-gray-900">Mesa {table.number}</CardTitle>
-                    <Badge className="bg-green-100 text-green-800 mx-auto w-fit">
-                      <MapPin className="h-3 w-3 mr-1" />
-                      Disponível
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="text-center">
-                      <p className="text-sm text-gray-500">Capacidade</p>
-                      <p className="text-2xl font-bold text-gray-900">{table.capacity}</p>
-                      <p className="text-sm text-gray-500">pessoas</p>
-                    </div>
-
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          className="w-full bg-green-600 hover:bg-green-700"
-                          onClick={() => setNewOrderTableId(table.id)}
-                        >
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          Ocupar Mesa
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Criar Novo Pedido para Mesa {table.number}</DialogTitle>
-                          <DialogDescription>
-                            Adicione os itens e o número de clientes para esta mesa.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="menuItemSelect">Adicionar Item</Label>
-                            <Select
-                              value={selectedMenuItemId}
-                              onValueChange={setSelectedMenuItemId}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecione um item do cardápio" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {menuItems.map((menuItem) => (
-                                  <SelectItem key={menuItem.id} value={menuItem.id.toString()}>
-                                    {menuItem.name} - R$ {menuItem.price.toFixed(2)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Button onClick={addItemToOrder} className="mt-2 w-full">
-                              Adicionar Item
-                            </Button>
-                          </div>
-
-                          {newOrderItems.length > 0 && (
-                            <div className="border p-3 rounded-lg space-y-2">
-                              <h4 className="font-semibold text-gray-900">Itens do Novo Pedido:</h4>
-                              {newOrderItems.map((item) => (
-                                <div key={item.id} className="flex justify-between items-center text-sm">
-                                  <span>{item.quantity}x {item.name}</span>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    onClick={() => removeItemFromOrder(item.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                  </Button>
-                                </div>
-                              ))}
-                              <div className="border-t pt-2 flex justify-between font-bold">
-                                <span>Total:</span>
-                                <span>R$ {newOrderItems.reduce((acc, item) => acc + item.price * item.quantity, 0).toFixed(2)}</span>
-                              </div>
-                            </div>
-                          )}
-
-                          <Button 
-                            onClick={createNewOrder} 
-                            className="w-full bg-blue-600 hover:bg-blue-700" 
-                            disabled={newOrderItems.length === 0}
-                          >
-                            Criar Pedido e Ocupar Mesa
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    else if (activeSection === "reservations") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Reservas do Dia</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {reservations.length === 0 ? (
-              <Card className="lg:col-span-2">
-                <CardContent className="p-8 text-center">
-                  <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">Nenhuma reserva para hoje.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              reservations.map((reservation) => (
-                <Card key={reservation.id} className="border-0 shadow-sm bg-white">
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="text-lg text-gray-900">{reservation.name}</CardTitle>
-                      <Badge
-                        className={
-                          reservation.status === "confirmed"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-amber-100 text-amber-800"
+                        // CORREÇÃO: Atrasar o toast para fora do ciclo de renderização imediato
+                        if (updatedItem.status === "READY") {
+                            setTimeout(() => { // <--- Adicionado setTimeout
+                                toast({ title: "Item Pronto! 🍽️", description: `${updatedItem.menuItemName} está pronto.` });
+                            }, 0); 
                         }
-                      >
-                        <Calendar className="h-3 w-3 mr-1" />
-                        {reservation.status === "confirmed" ? "Confirmada" : "Pendente"}
-                      </Badge>
+
+                    } catch (error) {
+                        console.error("[WS GARÇOM] Error parsing or processing /topic/order-items message:", error, message.body);
+                        toast({ title: "Erro de processamento WS", description: "Problema ao atualizar dados em tempo real.", variant: "destructive" });
+                    }
+                });
+
+                // ... (o restante do código do useEffect, incluindo os outros subscribes)
+                // Lembre-se de aplicar setTimeout em *todas* as chamadas toast() dentro dos subscribes.
+
+                // --- Orders Subscription ---
+                client.subscribe('/topic/orders', (message: IMessage) => {
+                    try {
+                        const updatedOrder: OrderDTO = JSON.parse(message.body);
+                        console.log("--- WS /topic/orders Debug ---");
+                        console.log("RECEIVED RAW MESSAGE BODY:", message.body); 
+                        console.log("PARSED updatedOrder:", updatedOrder);
+                        console.log("updatedOrder.id:", updatedOrder.id, "updatedOrder.status:", updatedOrder.status);
+                        
+                        const sortOrderFn = (a: OrderDTO, b: OrderDTO) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
+                        if (message.body.includes("\"deleted\": true")) { 
+                            const deletedOrderInfo = JSON.parse(message.body);
+                            if (deletedOrderInfo.deleted && deletedOrderInfo.id) {
+                                setActiveOrders(prev => {
+                                    const filtered = Array.isArray(prev) ? prev.filter(o => o.id !== deletedOrderInfo.id) : [];
+                                    console.log(`[WS Debug] Active Orders: Removed deleted order ${deletedOrderInfo.id}. New list length: ${filtered.length}`);
+                                    return filtered;
+                                });
+                                setDeliveredOrders(prev => { 
+                                    const filtered = Array.isArray(prev) ? prev.filter(o => o.id !== deletedOrderInfo.id) : [];
+                                    console.log(`[WS Debug] Delivered Orders: Removed deleted order ${deletedOrderInfo.id}. New list length: ${filtered.length}`);
+                                    return filtered;
+                                });
+                                setPendingItems(prev => prev.filter(item => item.orderId !== deletedOrderInfo.id));
+                                setPreparingItems(prev => prev.filter(item => item.orderId !== deletedOrderInfo.id));
+                                setReadyItems(prev => prev.filter(item => item.orderId !== deletedOrderInfo.id));
+
+                                setTimeout(() => { // <--- Adicionado setTimeout
+                                    toast({ title: "Pedido Removido", description: `Pedido #${deletedOrderInfo.id} foi removido.`, variant: "default" });
+                                }, 0);
+                                return; 
+                            }
+                        }
+
+                        setActiveOrders(prev => {
+                            console.log(`[WS Debug] Updating Active Orders. Previous state length: ${prev.length}`);
+                            const filtered = Array.isArray(prev) ? prev.filter(o => o.id !== updatedOrder.id) : [];
+                            let newList = filtered;
+
+                            if (updatedOrder.status === "OPEN" || updatedOrder.status === "UNPAID") {
+                                newList = [...filtered, updatedOrder].sort(sortOrderFn);
+                                console.log(`[WS Debug] Active Orders: Added/Updated order ${updatedOrder.id}. New list length: ${newList.length}. Current order status: ${updatedOrder.status}`);
+                                
+                                setPendingItems(currentPendingItems => {
+                                    const newPending = updatedOrder.items.filter(item => item.status === "PENDING");
+                                    const combined = Array.isArray(currentPendingItems) ? currentPendingItems.filter(item => item.orderId !== updatedOrder.id) : [];
+                                    return [...combined, ...newPending].sort(sortOrderItemFn);
+                                });
+
+                                setPreparingItems(currentPreparingItems => {
+                                    const newPreparing = updatedOrder.items.filter(item => item.status === "PREPARING");
+                                    const combined = Array.isArray(currentPreparingItems) ? currentPreparingItems.filter(item => item.orderId !== updatedOrder.id) : [];
+                                    return [...combined, ...newPreparing].sort(sortOrderItemFn);
+                                });
+
+                                setReadyItems(currentReadyItems => {
+                                    const newReady = updatedOrder.items.filter(item => item.status === "READY");
+                                    const combined = Array.isArray(currentReadyItems) ? currentReadyItems.filter(item => item.orderId !== updatedOrder.id) : [];
+                                    return [...combined, ...newReady].sort(sortOrderItemFn);
+                                });
+
+                            } else {
+                                console.log(`[WS Debug] Active Orders: Order ${updatedOrder.id} status is ${updatedOrder.status}, filtering out. New list length: ${filtered.length}`);
+                                setPendingItems(prevItems => prevItems.filter(item => item.orderId !== updatedOrder.id));
+                                setPreparingItems(prevItems => prevItems.filter(item => item.orderId !== updatedOrder.id));
+                                setReadyItems(prevItems => prevItems.filter(item => item.orderId !== updatedOrder.id));
+                            }
+                            return newList;
+                        });
+        
+                        if (updatedOrder.status === "PAID") {
+                            setDeliveredOrders(prev => {
+                                console.log(`[WS Debug] Updating Delivered Orders. Previous state length: ${prev.length}`);
+                                const filtered = Array.isArray(prev) ? prev.filter(o => o.id !== updatedOrder.id) : [];
+                                const newList = [...filtered, updatedOrder].sort(sortOrderFn);
+                                console.log(`[WS Debug] Delivered Orders: Added/Updated order ${updatedOrder.id}. New list length: ${newList.length}`);
+                                return newList;
+                            });
+                            setAccountRequestNotifications(prev => prev.filter(n => n.orderId !== updatedOrder.id));
+                            // Adicionar toast para pedido pago, se desejar
+                            // setTimeout(() => {
+                            //     toast({ title: "Pedido Pago!", description: `Pedido #${updatedOrder.id} foi pago.`, variant: "success" });
+                            // }, 0);
+                        }
+                    } catch (error) {
+                        console.error("[WS GARÇOM] Error parsing or processing /topic/orders message:", error, message.body);
+                        setTimeout(() => { // <--- Adicionado setTimeout
+                            toast({ title: "Erro de processamento WS", description: "Problema ao atualizar dados em tempo real.", variant: "destructive" });
+                        }, 0);
+                    }
+                });
+
+                // --- Notifications/Account Requests Subscription ---
+                client.subscribe('/topic/notifications/account-requests', (message: IMessage) => {
+                    try {
+                        const notification: AccountRequestNotificationDTO = JSON.parse(message.body);
+                        console.log("--- WS /topic/notifications/account-requests Debug ---");
+                        console.log("RECEIVED RAW MESSAGE BODY:", message.body);
+                        console.log("PARSED notification:", notification);
+
+                        setAccountRequestNotifications(prev => {
+                            const currentNotifications = Array.isArray(prev) ? prev : [];
+                            if (!currentNotifications.some(req => req.id === notification.id)) {
+                                setTimeout(() => { // <--- Adicionado setTimeout
+                                    toast({ title: "Conta Solicitada! 💳", description: `Mesa ${notification.tableNumber} pediu a conta.`, duration: 7000 });
+                                }, 0);
+                                const newList = [...currentNotifications, notification].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                                console.log(`[WS Debug] Account Requests: Added notification ${notification.id}. New list length: ${newList.length}`);
+                                return newList;
+                            }
+                            console.log(`[WS Debug] Account Requests: Notification ${notification.id} already exists or is read. No change.`);
+                            return currentNotifications;
+                        });
+                        fetchActiveOrders(); 
+                    } catch (error) {
+                        console.error("[WS GARÇOM] Error parsing or processing /topic/notifications/account-requests message:", error, message.body);
+                        setTimeout(() => { // <--- Adicionado setTimeout
+                            toast({ title: "Erro de processamento WS", description: "Problema ao atualizar dados em tempo real.", variant: "destructive" });
+                        }, 0);
+                    }
+                });
+
+                // --- Tables Subscription ---
+                client.subscribe('/topic/tables', (message: IMessage) => {
+                    try {
+                        const updatedTable: RestaurantTableDTO = JSON.parse(message.body);
+                        console.log("--- WS /topic/tables Debug ---");
+                        console.log("RECEIVED RAW MESSAGE BODY:", message.body);
+                        console.log("PARSED updatedTable:", updatedTable);
+
+                        setTables(prev => {
+                            const currentTables = Array.isArray(prev) ? prev : [];
+                            const idx = currentTables.findIndex(t => t.id === updatedTable.id);
+                            const newList = [...currentTables];
+                            if (idx > -1) {
+                                newList[idx] = updatedTable;
+                                console.log(`[WS Debug] Tables: Updated table ${updatedTable.id}. Status: ${updatedTable.status}.`);
+                            } else {
+                                newList.push(updatedTable);
+                                console.log(`[WS Debug] Tables: Added new table ${updatedTable.id}. Status: ${updatedTable.status}.`);
+                            }
+                            return newList.sort((a, b) => a.number - b.number);
+                        });
+                    } catch (error) {
+                        console.error("[WS GARÇOM] Error parsing or processing /topic/tables message:", error, message.body);
+                        setTimeout(() => { // <--- Adicionado setTimeout
+                            toast({ title: "Erro de processamento WS", description: "Problema ao atualizar dados em tempo real.", variant: "destructive" });
+                        }, 0);
+                    }
+                });
+
+            }, 
+            onStompError: (frame: any) => { 
+                setTimeout(() => { // <--- Adicionado setTimeout
+                    toast({title:"Erro WS STOMP", description: frame.headers['message'], variant: "destructive"});
+                }, 0);
+            },
+            onWebSocketError: () => { 
+                setTimeout(() => { // <--- Adicionado setTimeout
+                    toast({title:"Erro Conexão WS", description: "Não foi possível conectar ao servidor em tempo real.", variant: "destructive"});
+                }, 0);
+            },
+            onDisconnect: () => { console.log('Garçom desconectado do WebSocket.'); }
+        });
+
+        client.activate();
+
+        return () => {
+            if (stompClientRef.current?.connected) {
+                console.log("STOMP (Garçom): Desativando cliente WebSocket.");
+                stompClientRef.current.deactivate();
+                stompClientRef.current = null;
+            }
+        };
+    }, [authToken, toast, fetchActiveOrders]); // Continua com as dependências
+
+    // 3. Atualização do relógio
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // 4. Cálculo de estatísticas de vendas
+    useEffect(() => {
+        const paidOrders = deliveredOrders;
+        const totalSales = paidOrders.reduce((sum, order) => sum + order.totalValue, 0);
+        const totalOrders = paidOrders.length;
+        let cash = 0, card = 0, pix = 0;
+        paidOrders.forEach(order => {
+            if (order.paymentMethod === "CASH") cash += order.totalValue;
+            else if (order.paymentMethod === "CARD") card += order.totalValue;
+            else if (order.paymentMethod === "PIX") pix += order.totalValue;
+        });
+        setDailySales(prev => ({ ...prev, totalSales, totalOrders, avgOrderValue: totalOrders > 0 ? totalSales / totalOrders : 0, cashSales: cash, cardSales: card, pixSales: pix, myCommission: totalSales * (prev.commissionRate / 100) }));
+    }, [deliveredOrders]);
+
+
+    const finishedOrders = [...activeOrders.filter(o => o.status === "UNPAID"), ...deliveredOrders]
+        .sort((a, b) => new Date(b.closedAt || b.createdAt).getTime() - new Date(a.closedAt || a.createdAt).getTime());
+
+    const stats = {
+        totalTables: tables.length,
+        occupiedTables: tables.filter(t => t.status === "OCCUPIED").length,
+        availableTables: tables.filter(t => t.status === "AVAILABLE").length,
+        reservedTables: tables.filter(t => t.status === "RESERVED").length,
+        totalComandas: activeOrders.filter(o => o.status === "OPEN" || o.status === "UNPAID").length, 
+        newOrders: pendingItems.length,
+        preparingOrders: preparingItems.length,
+        readyOrders: readyItems.length,
+        finishedOrdersCount: finishedOrders.length, 
+        totalRevenue: dailySales.totalSales,
+        accountRequests: accountRequestNotifications.length,
+    };
+
+    const handleStatusChange = async (itemId: number, targetStatus: OrderItemDTO["status"]) => {
+        let endpoint = "";
+        if (targetStatus === "PREPARING") endpoint = `/kitchen/item/${itemId}/start-preparing`;
+        else if (targetStatus === "READY") endpoint = `/kitchen/item/${itemId}/mark-ready`;
+        else if (targetStatus === "DELIVERED") endpoint = `/kitchen/item/${itemId}/mark-delivered`;
+        else return;
+
+        try {
+            const response = await fetch(`${BASE_URL}${endpoint}`, { method: "PATCH", headers: { "Authorization": `Bearer ${authToken}` }});
+            if (!response.ok) {
+                const errorBody = await response.text();
+                throw new Error(errorBody || `Falha ao mudar status para ${targetStatus}.`);
+            }
+            
+            toast({ title: "Status Atualizado!", description: `Item ${itemId} foi para: ${getOrderItemStatusText(targetStatus)}.`, variant: "default" });
+
+        } catch (e:any) { 
+            toast({ title: "Erro ao Mudar Status", description: e.message, variant: "destructive" });
+        }
+    };
+    
+    const markOrderAsPaidAndDeliverItems = async (order: OrderDTO, paymentMethodValue: PaymentMethod, notificationIdToRemove?: number) => {
+        if (!paymentMethodValue) { 
+            toast({ title: "Forma de Pagamento", description: "Selecione uma forma de pagamento para continuar.", variant: "destructive" }); 
+            return; 
+        }
+        try {
+            const payResponse = await fetch(`${BASE_URL}/waiter/order/${order.id}/pay?paymentMethod=${paymentMethodValue}`, { method: "PATCH", headers: { Authorization: `Bearer ${authToken}` }});
+            if (!payResponse.ok) {
+                const errorData = await payResponse.json().catch(() => ({ message: "Erro desconhecido ao processar pagamento." }));
+                throw new Error(errorData.message);
+            }
+            
+            toast({ title: "Pedido Pago!", description: `Pagamento para a Mesa ${order.tableName} processado com sucesso.`});
+            setSelectedPaymentMethodForOrder(prev => { const newState = {...prev}; delete newState[order.id]; return newState; });
+            
+            if (notificationIdToRemove) {
+                setAccountRequestNotifications(prev => prev.filter(n => n.id !== notificationIdToRemove));
+            }
+        } catch (e:any) { 
+            toast({ title: "Erro ao Finalizar Pedido", description: e.message, variant: "destructive" });
+        }
+    };
+
+    const updateTableStatus = async (tableId: number, newStatus: RestaurantTableDTO["status"]) => {
+        const table = tables.find(t=>t.id===tableId); 
+        if(!table) return;
+
+        try {
+            const res = await fetch(`${BASE_URL}/table/${tableId}`, {method:"PUT",headers:{"Authorization":`Bearer ${authToken}`,"Content-Type":"application/json"},body:JSON.stringify({...table, status:newStatus})});
+            if(!res.ok) throw new Error(await res.text() || "Erro ao atualizar status da mesa.");
+            toast({title:"Mesa Atualizada", description:`Status da Mesa ${table.number} mudou para ${getTableStatusText(newStatus)}`});
+        } catch(e:any) {
+            toast({title:"Erro ao Atualizar Mesa",description:e.message,variant:"destructive"})
+        }
+    };
+
+    const createNewOrder = async () => {
+        if(!newOrderTableId || newOrderItems.length === 0) {
+            toast({title:"Pedido Incompleto", description:"Por favor, selecione uma mesa e adicione pelo menos um item.", variant:"destructive"}); 
+            return;
+        }
+
+        try {
+            const table = tables.find(t=>t.id===newOrderTableId); 
+            if(!table) throw new Error("Mesa selecionada não foi encontrada.");
+
+            const orderPayload = {
+                tableId: newOrderTableId,
+                userCpf: currentUserData.cpf, 
+            };
+
+            const orderRes = await fetch(`${BASE_URL}/orders/create-for-table`, {
+                method:"POST",
+                headers:{"Authorization":`Bearer ${authToken}`,"Content-Type":"application/json"},
+                body:JSON.stringify(orderPayload)
+            });
+
+            if(!orderRes.ok) throw new Error(await orderRes.text() || "Erro ao criar o container do pedido.");
+            
+            const createdOrder:OrderDTO = await orderRes.json();
+            
+            const itemsPayload = newOrderItems.map(i => ({menuItemId: i.id, quantity: i.quantity}));
+            
+            const addItemsEndpoint = `${BASE_URL}/orders/${createdOrder.id}/items`; 
+            
+            const addItemsRes = await fetch(addItemsEndpoint, {
+                method:"PATCH", 
+                headers:{"Authorization":`Bearer ${authToken}`,"Content-Type":"application/json"},
+                body:JSON.stringify(itemsPayload)
+            });
+
+            if(!addItemsRes.ok) {
+                throw new Error(`Falha ao adicionar itens: ${await addItemsRes.text()}`);
+            }
+
+            await updateTableStatus(newOrderTableId, "OCCUPIED");
+            
+            setNewOrderTableId(null);
+            setNewOrderItems([]);
+            setSelectedMenuItemId('');
+            toast({title:"Pedido Criado!", description:`Novo pedido para Mesa ${table.number} foi enviado com sucesso.`});
+            
+        } catch(e:any) {
+            toast({title:"Erro ao Criar Pedido", description:e.message, variant:"destructive"});
+        }
+    };
+
+    const OrderItemCard = ({ item }: { item: OrderItemDTO }) => {
+        const order = activeOrders.find(o => o.id === item.orderId) || deliveredOrders.find(o => o.id === item.orderId);
+        return (
+            <Card className="mb-4 shadow-sm">
+                <CardHeader className="pb-3">
+                    <div className="flex justify-between items-start">
+                        <CardTitle className="text-lg">Mesa {order?.tableName || 'N/A'} - Item: {item.menuItemName} (x{item.quantity})</CardTitle>
+                        <Badge className={`${getOrderItemStatusColor(item.status)} text-white`}>{getOrderItemStatusText(item.status)}</Badge>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Mesa:</span>
-                        <p className="font-medium">Mesa {reservation.table}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Horário:</span>
-                        <p className="font-medium">{reservation.time}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Pessoas:</span>
-                        <p className="font-medium">{reservation.guests} pessoas</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Telefone:</span>
-                        <p className="font-medium">{reservation.phone}</p>
-                      </div>
+                    <div className="text-xs text-gray-500 flex items-center gap-1"> <Timer className="h-3 w-3"/> {formatSafeDate(item.createdAt)} ({getElapsedTime(item.createdAt)} min) </div>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-sm text-gray-600 mb-3">{item.menuItemDescription}</p>
+                    {item.status === "PENDING" && <Button size="sm" className="w-full bg-amber-500 hover:bg-amber-600 text-white" onClick={() => handleStatusChange(item.id, "PREPARING")}><ChefHat className="w-4 h-4 mr-2"/>Iniciar Preparo</Button>}
+                    {item.status === "PREPARING" && <Button size="sm" className="w-full bg-green-500 hover:bg-green-600 text-white" onClick={() => handleStatusChange(item.id, "READY")}><CheckCircle className="w-4 h-4 mr-2"/>Marcar Pronto</Button>}
+                    {item.status === "READY" && <Button size="sm" className="w-full bg-blue-500 hover:bg-blue-600 text-white" onClick={() => handleStatusChange(item.id, "DELIVERED")}><Package className="h-4 w-4 mr-2"/>Marcar Entregue</Button>}
+                    {item.status === "DELIVERED" && <Button size="sm" className="w-full bg-green-600 text-white cursor-default" disabled><CheckCircle className="h-4 w-4 mr-2"/>Entregue</Button>}
+                </CardContent>
+            </Card>
+        );
+    };
+
+    const sidebarItems = [
+        { category: "Pedidos", items: [
+            { key: "dashboard", label: "Dashboard", icon: ListOrdered, count: null },
+            { key: "new-orders", label: "Novos Itens", icon: FileText, count: stats.newOrders },
+            { key: "preparing", label: "Itens em Preparo", icon: Clock, count: stats.preparingOrders },
+            { key: "ready", label: "Itens Prontos", icon: CheckCircle, count: stats.readyOrders },
+            { key: "finished-orders", label: "Pedidos Finalizados", icon: Receipt, count: finishedOrders.length }, 
+            { key: "account-requests", label: "Contas Solicitadas", icon: CreditCard, count: stats.accountRequests },
+        ]},
+        { category: "Mesas", items: [
+            { key: "occupied-tables", label: "Mesas Ocupadas", icon: Users, count: stats.occupiedTables },
+            { key: "available-tables", label: "Mesas Livres", icon: MapPin, count: stats.availableTables },
+        ]},
+        { category: "Sistema", items: [ { key: "logout", label: "Sair", icon: LogOut, count: null } ]},
+    ];
+
+    const handleSidebarClick = (key: string) => { if (key === "logout") onLogout(); else setActiveSection(key); };
+
+    const renderMainContent = useCallback(() => {
+        switch (activeSection) {
+            case "dashboard":
+                return (
+                    <div className="space-y-6">
+                        <h2 className="text-2xl font-bold text-gray-900">Visão Geral</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <Card><CardContent className="p-4"><div className="flex items-center justify-between"><div><p className="text-sm text-gray-600">Mesas Ocupadas</p><p className="text-2xl font-bold text-red-600">{stats.occupiedTables}</p></div><Users className="w-8 h-8 text-red-600" /></div></CardContent></Card>
+                            <Card><CardContent className="p-4"><div className="flex items-center justify-between"><div><p className="text-sm text-gray-600">Contas Solicitadas</p><p className="text-2xl font-bold text-blue-600">{stats.accountRequests}</p></div><CreditCard className="w-8 h-8 text-blue-600" /></div></CardContent></Card>
+                            <Card><CardContent className="p-4"><div className="flex items-center justify-between"><div><p className="text-sm text-gray-600">Itens Prontos</p><p className="text-2xl font-bold text-green-600">{stats.readyOrders}</p></div><CheckCircle className="w-8 h-8 text-green-600" /></div></CardContent></Card>
+                            <Card><CardContent className="p-4"><div className="flex items-center justify-between"><div><p className="text-sm text-gray-600">Receita (Dia)</p><p className="text-2xl font-bold text-amber-600">R$ {stats.totalRevenue.toFixed(2)}</p></div><DollarSign className="w-8 h-8 text-amber-600" /></div></CardContent></Card>
+                        </div>
                     </div>
-
-                    {reservation.notes && (
-                      <div>
-                        <span className="text-gray-500 text-sm">Observações:</span>
-                        <p className="text-sm bg-gray-50 p-2 rounded mt-1">{reservation.notes}</p>
-                      </div>
-                    )}
-
-                    <div className="border-t pt-4 space-y-2">
-                      {reservation.status === "pending" && (
-                        <Button
-                          className="w-full bg-green-600 hover:bg-green-700"
-                          onClick={() => confirmReservation(reservation)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Confirmar Reserva
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={() => {
-                          const tableToOccupy = tables.find(t => t.number === reservation.table);
-                          if (tableToOccupy) {
-                            updateTableStatus(tableToOccupy.id, "OCCUPIED", reservation.guests);
-                            setReservations(prev => prev.filter(res => res.id !== reservation.id));
-                          } else {
-                            toast({ title: "Erro", description: "Mesa não encontrada para acomodar.", variant: "destructive" });
-                          }
-                        }}
-                      >
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Acomodar Clientes
-                      </Button>
+                );
+            case "new-orders": case "preparing": case "ready":
+                let itemsToDisplay: OrderItemDTO[] = [];
+                let sectionTitle = "";
+                let currentItemCount = 0;
+                if (activeSection === "new-orders") { itemsToDisplay = pendingItems; sectionTitle = "Novos Itens de Pedidos"; currentItemCount = stats.newOrders; }
+                else if (activeSection === "preparing") { itemsToDisplay = preparingItems; sectionTitle = "Itens em Preparo"; currentItemCount = stats.preparingOrders; }
+                else if (activeSection === "ready") { itemsToDisplay = readyItems; sectionTitle = "Itens Prontos para Entrega"; currentItemCount = stats.readyOrders; }
+                return ( <div className="space-y-6"> <h2 className="text-2xl font-bold">{sectionTitle} ({currentItemCount})</h2> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"> {itemsToDisplay.length === 0 ? <Card className="md:col-span-2 lg:col-span-3"><CardContent className="p-6 text-center text-gray-500">Nenhum item nesta categoria.</CardContent></Card> : itemsToDisplay.map(item => <OrderItemCard key={item.id} item={item} />)} </div> </div> );
+            
+            case "finished-orders":
+                return (
+                    <div className="space-y-6">
+                        <h2 className="text-2xl font-bold text-gray-900">Pedidos Finalizados ({finishedOrders.length})</h2>
+                        {finishedOrders.length === 0 ? (
+                            <Card><CardContent className="p-8 text-center text-gray-500"><Receipt className="w-12 h-12 mx-auto mb-2 text-gray-400"/>Nenhum pedido finalizado encontrado.</CardContent></Card>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {finishedOrders.map(order => (
+                                    <Card key={order.id} className={`shadow-md border-l-4 ${order.status === "PAID" ? 'border-green-500' : 'border-amber-500'}`}>
+                                        <CardHeader>
+                                            <div className="flex justify-between items-center">
+                                                <CardTitle className="text-lg">Mesa {order.tableName} - Pedido #{order.id}</CardTitle>
+                                                <Badge className={`${order.status === "PAID" ? 'bg-green-100 text-green-700 border-green-300' : 'bg-amber-100 text-amber-700 border-amber-300'}`}>
+                                                    {order.status === "PAID" ? `Pago (${getPaymentMethodText(order.paymentMethod)})` : "Aguardando Pagamento"}
+                                                </Badge>
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                                <p>Cliente: {order.userName} (CPF: {order.userCpf || 'N/A'})</p>
+                                                <p>Iniciado: {formatSafeDate(order.createdAt)}</p>
+                                                {order.status === "PAID" && order.closedAt && (<p>Finalizado: {formatSafeDate(order.closedAt)}</p>)}
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="font-medium mb-1">Itens da Comanda:</p>
+                                            <ul className="list-disc list-inside text-sm space-y-0.5 max-h-28 overflow-y-auto bg-slate-50 p-2 rounded">
+                                                {order.items.map(item => (<li key={item.id}>{item.quantity}x {item.menuItemName}</li>))}
+                                            </ul>
+                                            <p className="text-right font-bold mt-2 text-xl">Total: R$ {order.totalValue.toFixed(2)}</p>
+                                            {order.status === "UNPAID" && (
+                                                <Button variant="outline" size="sm" className="mt-3 w-full border-blue-500 text-blue-600 hover:bg-blue-50" onClick={() => {
+                                                    const notificationForOrder = accountRequestNotifications.find(n => n.orderId === order.id);
+                                                    if (notificationForOrder) { 
+                                                        setSelectedPaymentMethodForOrder(prev => ({...prev, [order.id]: notificationForOrder.requestedPaymentMethod || ''})); 
+                                                    }
+                                                    setActiveSection("account-requests");
+                                                }}>
+                                                    <CreditCard className="h-4 w-4 mr-2" /> Processar Pagamento
+                                                </Button>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </div>
-      );
-    }
+                );
 
-    else if (activeSection === "daily-sales") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Vendas do Dia</h2>
-          <Card>
-            <CardContent className="p-6 text-center">
-              <DollarSign className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">Conteúdo de vendas diárias em desenvolvimento...</p>
-              <p className="text-lg font-bold mt-2">Total hoje: R$ {stats.totalRevenue.toFixed(2)}</p>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-
-    else if (activeSection === "commissions") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Minhas Comissões</h2>
-          <Card>
-            <CardContent className="p-6 text-center">
-              <TrendingUp className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">Cálculo de comissões em desenvolvimento...</p>
-              <p className="text-lg font-bold mt-2">Sua comissão: R$ {dailySales.myCommission.toFixed(2)}</p>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-
-    else if (activeSection === "settings") {
-      return (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold text-gray-900">Configurações</h2>
-          <Card>
-            <CardContent className="p-6 text-center">
-              <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">Configurações do sistema em desenvolvimento...</p>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-
+            case "account-requests":
+                const ordersForPaymentProcessing = accountRequestNotifications
+                    .map(notification => { 
+                        const order = activeOrders.find(o => o.id === notification.orderId && o.status === "UNPAID"); 
+                        return order ? { ...order, notificationDetails: notification } : null; 
+                    })
+                    .filter(Boolean) as (OrderDTO & { notificationDetails: AccountRequestNotificationDTO })[];
+                return ( <div className="space-y-6"> <h2 className="text-2xl font-bold text-gray-900">Contas Solicitadas ({ordersForPaymentProcessing.length})</h2> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"> {ordersForPaymentProcessing.length === 0 ? ( <Card className="lg:col-span-3"><CardContent className="p-8 text-center"><CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" /><p className="text-gray-500">Nenhuma conta solicitada no momento.</p></CardContent></Card> ) : ( ordersForPaymentProcessing.map((orderWithNotification) => { const order = orderWithNotification; const notification = order.notificationDetails; const currentSelectedPayMethod = selectedPaymentMethodForOrder[order.id] || notification.requestedPaymentMethod || ''; return ( <Card key={notification.id} className="border-blue-300 border-2"> <CardHeader> <div className="flex justify-between items-center"> <CardTitle className="text-lg">Mesa {order.tableName} (Ped: #{order.id})</CardTitle> <Badge variant="outline">Cliente: {notification.userName}</Badge> </div> <p className="text-sm text-blue-600 font-semibold"> Pgto. Solicitado: {getPaymentMethodText(notification.requestedPaymentMethod)} </p> </CardHeader> <CardContent className="space-y-3"> <div className="text-center p-3 bg-blue-50 rounded-md"> <p className="text-sm text-blue-700">Total da Conta</p> <p className="text-2xl font-bold text-blue-800">R$ {order.totalValue.toFixed(2)}</p> </div> <div> <Label htmlFor={`payment-method-select-${order.id}`}>Confirmar Pagamento:</Label> <Select value={currentSelectedPayMethod} onValueChange={(value: PaymentMethod | '') => setSelectedPaymentMethodForOrder(prev => ({...prev, [order.id]: value as PaymentMethod}))} > <SelectTrigger id={`payment-method-select-${order.id}`}><SelectValue placeholder="Selecione..." /></SelectTrigger> <SelectContent> <SelectItem value="CARD">Cartão</SelectItem> <SelectItem value="CASH">Dinheiro</SelectItem> <SelectItem value="PIX">PIX</SelectItem> </SelectContent> </Select> </div> <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={() => markOrderAsPaidAndDeliverItems(order, currentSelectedPayMethod as PaymentMethod, notification.id)} disabled={!currentSelectedPayMethod} > <CreditCard className="h-4 w-4 mr-2" /> Processar Pagamento </Button> </CardContent> </Card> )}) )} </div> </div> );
+            case "occupied-tables":
+                const occupiedTables = tables.filter(t => t.status === "OCCUPIED");
+                return (
+                    <div className="space-y-6">
+                        <h2 className="text-2xl font-bold">Mesas Ocupadas ({occupiedTables.length})</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {occupiedTables.length === 0 ? (
+                                <Card className="md:col-span-2"><CardContent className="p-6 text-center text-gray-500">Nenhuma mesa ocupada.</CardContent></Card>
+                            ) : (
+                                occupiedTables.map(table => {
+                                    const orderOnTable = activeOrders.find(o => o.tableId === table.id && (o.status === "OPEN" || o.status === "UNPAID"));
+                                    return (
+                                        <Card key={table.id} className="border-red-300 shadow-md">
+                                            <CardHeader>
+                                                <div className="flex justify-between items-center">
+                                                    <CardTitle>Mesa {table.number}</CardTitle>
+                                                    <Badge variant="destructive">{getTableStatusText(table.status)}</Badge>
+                                                </div>
+                                                {orderOnTable && (
+                                                    <div className="text-xs text-gray-600 mt-1 space-y-0.5">
+                                                        <p><span className="font-medium">Cliente:</span> {orderOnTable.userName || "N/A"}</p>
+                                                        <p><span className="font-medium">CPF:</span> {orderOnTable.userCpf || "N/A"}</p>
+                                                    </div>
+                                                )}
+                                            </CardHeader>
+                                            <CardContent className="text-sm space-y-1">
+                                                <p><span className="font-medium">Capacidade:</span> {table.capacity} pessoas</p>
+                                                {orderOnTable ? (
+                                                    <>
+                                                        <p className="mt-2"><span className="font-medium">Comanda Ativa:</span> #{orderOnTable.id}</p>
+                                                        <p className="font-bold text-base mt-1">Total: R$ {orderOnTable.totalValue.toFixed(2)}</p>
+                                                        {orderOnTable.status === "UNPAID" && (
+                                                            <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => setActiveSection("account-requests")}>
+                                                                <CreditCard className="h-4 w-4 mr-2" /> Ver Conta Solicitada
+                                                            </Button>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <p className="text-gray-500 italic mt-2">Sem comanda ativa nesta mesa.</p>
+                                                )}
+                                                {!orderOnTable && table.status === "OCCUPIED" && (
+                                                    <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => updateTableStatus(table.id, "AVAILABLE")}>
+                                                        <CheckCircle className="h-4 w-4 mr-2" /> Liberar Mesa (Forçar)
+                                                    </Button>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </div>
+                );
+            case "available-tables":
+                const availableTables = tables.filter(t => t.status === "AVAILABLE");
+                return ( <div className="space-y-6"> <h2 className="text-2xl font-bold">Mesas Livres ({availableTables.length})</h2> <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"> {availableTables.length === 0 ? <Card className="sm:col-span-2 md:col-span-3 lg:col-span-4"><CardContent className="p-6 text-center text-gray-500">Nenhuma mesa livre.</CardContent></Card> : availableTables.map(table => (
+                    <Dialog key={table.id} onOpenChange={(open) => { if(open) setNewOrderTableId(table.id); else {setNewOrderTableId(null); setNewOrderItems([]); setSelectedMenuItemId('');} }}>
+                        <DialogTrigger asChild>
+                            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-green-300">
+                                <CardHeader className="text-center"> <CardTitle>Mesa {table.number}</CardTitle> <Badge variant="secondary" className="bg-green-100 text-green-700">{getTableStatusText(table.status)}</Badge> </CardHeader>
+                                <CardContent className="text-center"> <Users className="mx-auto h-8 w-8 text-gray-400 mb-1" /> <p>{table.capacity} Lugares</p> </CardContent>
+                            </Card>
+                        </DialogTrigger>
+                        <DialogContent> <DialogHeader><DialogTitle>Novo Pedido - Mesa {table.number}</DialogTitle><DialogDescription>Adicione itens para iniciar um novo pedido para a Mesa {table.number}.</DialogDescription></DialogHeader> <div className="space-y-4 py-4"> <div> <Label htmlFor={`menuItemSelect-${table.id}`}>Adicionar Item</Label> <div className="flex gap-2"> <Select value={selectedMenuItemId} onValueChange={setSelectedMenuItemId}> <SelectTrigger id={`menuItemSelect-${table.id}`}><SelectValue placeholder="Selecione um item..." /></SelectTrigger> <SelectContent>{menuItems.map(mi => <SelectItem key={mi.id} value={mi.id.toString()}>{mi.name} (R${mi.price.toFixed(2)})</SelectItem>)}</SelectContent> </Select> <Button onClick={() => { const item = menuItems.find(mi => mi.id === Number(selectedMenuItemId)); if (item) setNewOrderItems(prev => { const existing = prev.find(i => i.id === item.id); return existing ? prev.map(i => i.id === item.id ? {...i, quantity: i.quantity + 1} : i) : [...prev, {...item, quantity: 1}]; }); }} disabled={!selectedMenuItemId} aria-label="Adicionar item selecionado"><Plus className="h-4 w-4"/></Button> </div> </div> {newOrderItems.length > 0 && ( <div className="border p-3 rounded-md max-h-48 overflow-y-auto bg-slate-50"> <h4 className="text-sm font-medium mb-2 text-gray-700">Itens do Pedido:</h4> {newOrderItems.map(item => ( <div key={item.id} className="flex justify-between items-center text-sm py-1.5 border-b last:border-b-0"> <div> <span>{item.quantity}x {item.name}</span> <span className="text-xs text-gray-500 ml-2">(R$ {(item.price * item.quantity).toFixed(2)})</span> </div> <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setNewOrderItems(prev => prev.filter(i => i.id !== item.id))} aria-label={`Remover ${item.name}`}> <Trash2 className="h-4 w-4 text-red-500"/> </Button> </div> ))} <div className="font-bold text-right mt-2 pt-2 border-t"> Total: R$ {newOrderItems.reduce((sum, i) => sum + i.price * i.quantity, 0).toFixed(2)} </div> </div> )} </div> <div className="flex justify-end gap-2 mt-4"> <DialogClose asChild><Button type="button" variant="outline">Cancelar</Button></DialogClose> <Button onClick={createNewOrder} disabled={newOrderItems.length === 0 || newOrderTableId !== table.id} >Criar Pedido</Button> </div> </DialogContent>
+                    </Dialog>
+                ))} </div> </div> );
+            default:
+                return <div className="text-center p-10 text-gray-500">Selecione uma opção no menu lateral para começar.</div>;
+        }
+    }, [ activeSection, tables, activeOrders, pendingItems, preparingItems, readyItems, stats, deliveredOrders, accountRequestNotifications, menuItems, dailySales, currentUserData, authToken, selectedPaymentMethodForOrder, newOrderItems, newOrderTableId, selectedMenuItemId, toast, handleStatusChange, markOrderAsPaidAndDeliverItems, updateTableStatus, createNewOrder, finishedOrders ]);
+    
     return (
-      <div className="flex-1 p-6">
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500">Selecione uma opção no menu lateral</p>
-      </div>
+        <div className="min-h-screen bg-gray-100 flex">
+            <div className="w-64 bg-white border-r border-gray-200 flex flex-col fixed top-0 left-0 h-full z-20">
+                <div className="p-5 border-b border-gray-200"> <div className="flex items-center gap-3"> <div className="p-2 bg-orange-500 rounded-lg"><Utensils className="h-6 w-6 text-white" /></div> <div> <h1 className="text-lg font-bold text-gray-900">TableMaster</h1> <p className="text-xs text-gray-500">Painel do Garçom</p> </div> </div> </div>
+                <ScrollArea className="flex-1">
+                    <nav className="p-4 space-y-1">
+                        {sidebarItems.map((category) => (
+                            <div key={category.category} className="mb-4">
+                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 mb-2">{category.category}</h3>
+                                {category.items.map((item) => (
+                                    <button key={item.key} onClick={() => handleSidebarClick(item.key)} className={`w-full flex items-center justify-between p-3 rounded-md text-sm transition-colors ${ activeSection === item.key ? "bg-orange-100 text-orange-700 font-medium" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900" }`} >
+                                        <div className="flex items-center gap-3"><item.icon className="h-5 w-5" />{item.label}</div>
+                                        {item.count !== null && item.count > 0 && <Badge className="bg-orange-500 text-white text-xs px-1.5 py-0.5 tabular-nums">{item.count}</Badge>}
+                                    </button>
+                                ))}
+                            </div>
+                        ))}
+                    </nav>
+                </ScrollArea>
+            </div>
+            <div className="flex-1 flex flex-col ml-64">
+                <header className="bg-white border-b border-gray-200 px-6 py-3 sticky top-0 z-10"> <div className="flex items-center justify-between"> <div> <h1 className="text-xl font-semibold text-gray-800"> {sidebarItems.flatMap(cat => cat.items).find(it => it.key === activeSection)?.label || "Dashboard"} </h1> </div> <div className="text-right"> <div className="text-base font-medium text-gray-700">{currentTime.toLocaleTimeString('pt-BR')}</div> <div className="text-xs text-gray-500">{currentTime.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div> </div> </div> </header>
+                <main className="flex-1 p-6 overflow-y-auto bg-slate-50">
+                    {renderMainContent()}
+                </main>
+            </div>
+        </div>
     );
-  }, [activeSection, tables, activeOrders, pendingItems, preparingItems, readyItems, deliveredOrders, accountRequests, reservations, menuItems, dailySales, formatSafeDate, getElapsedTime, getOrderItemStatusColor, getOrderItemStatusText, getTableStatusColor, getTableStatusText, getOrderPaymentMethodText, handleStatusChange, markOrderAsDelivered, updateTableStatus, confirmReservation, addItemToOrder, removeItemFromOrder, createNewOrder, selectedPaymentMethod, selectedMenuItemId, setNewOrderTableId, setSelectedMenuItemId, setSelectedOrderForPayment, toast, authToken, currentUserData]);
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-500 rounded-lg">
-              <Utensils className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">TableMaster</h1>
-              <p className="text-sm text-gray-500">Garçom</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 p-4 space-y-6">
-          {sidebarItems.map((category) => (
-            <div key={category.category}>
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{category.category}</h3>
-              <div className="space-y-1">
-                {category.items.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => handleSidebarClick(item.key)}
-                    className={`w-full flex items-center justify-between p-3 rounded-lg text-left transition-colors ${
-                      activeSection === item.key || (item.key === "dashboard" && !activeSection)
-                        ? "bg-gray-100 text-gray-900"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <item.icon className="h-4 w-4" />
-                      <span className="text-sm font-medium">{item.label}</span>
-                    </div>
-                    {item.count !== null && item.count > 0 && (
-                      <Badge className="bg-orange-100 text-orange-800 text-xs">{item.count}</Badge>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 flex flex-col">
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">Painel do Garçom</h1>
-              <p className="text-sm text-gray-500">Gerencie pedidos, mesas e atendimento</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="text-xl font-mono">{currentTime.toLocaleTimeString()}</div>
-                <div className="text-sm text-gray-600">{currentTime.toLocaleDateString()}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 p-6">{renderMainContent()}</div>
-      </div>
-    </div>
-  )
 }

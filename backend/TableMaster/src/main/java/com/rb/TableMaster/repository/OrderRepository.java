@@ -16,9 +16,10 @@ import java.util.Optional;
 public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByTable(RestaurantTable table);
     List<Order> findByUser(User user);
+    List<Order> findByStatus(OrderStatus status);
     List<Order> findByStatusIn(List<OrderStatus> statuses);
     List<Order> findByTableAndStatusIn(RestaurantTable table, List<OrderStatus> statuses);
     Optional<Order> findByUserCpfAndStatus(String userCpf, OrderStatus status);
-    Optional<Order> findByUserAndStatus(User user, OrderStatus status);
+    List<Order> findByTableAndStatusInAndIdNot(RestaurantTable table, List<OrderStatus> statuses, Long orderIdToExclude);
 }
 

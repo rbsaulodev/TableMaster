@@ -2,13 +2,15 @@ package com.rb.TableMaster.controller;
 
 import com.rb.TableMaster.dto.OrderDTO;
 import com.rb.TableMaster.dto.OrderItemDTO;
-import com.rb.TableMaster.dto.RestaurantTableDTO;
 import com.rb.TableMaster.dto.ReserveTableRequestDTO;
+import com.rb.TableMaster.dto.RestaurantTableDTO;
+import com.rb.TableMaster.model.enums.PaymentMethod;
 import com.rb.TableMaster.service.ClientService;
 import com.rb.TableMaster.service.OrderService;
 import com.rb.TableMaster.service.RestaurantTableService;
 import com.rb.TableMaster.service.UserDetailsImpl;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -56,10 +58,25 @@ public class ClientController {
         return clientService.getClientOrders(clientCpf);
     }
 
-    @PatchMapping("/order/{orderId}/request-bill")
-    public OrderDTO requestBill(@PathVariable Long orderId, Authentication authentication) {
+
+    @PostMapping("/order/{orderId}/request-account")
+    public ResponseEntity<OrderDTO> requestAccount(
+            @PathVariable Long orderId,
+            @RequestParam @NotNull PaymentMethod paymentMethod,
+            Authentication authentication
+    ) {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         String clientCpf = userDetails.getUser().getCpf();
-        return clientService.closeOrder(clientCpf, orderId);
+        OrderDTO updatedOrder = clientService.requestAccount(clientCpf, orderId, paymentMethod);
+        return ResponseEntity.ok(updatedOrder);
+    }
+
+    @PatchMapping("/order/{orderId}/confirm")
+    public ResponseEntity<OrderDTO> confirmOrder(@PathVariable Long orderId, Authentication authentication) {
+        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        String clientCpf = userDetails.getUser().getCpf();
+        OrderDTO confirmedOrder = clientService.confirmOrder(clientCpf, orderId);
+
+        return ResponseEntity.ok(confirmedOrder);
     }
 }

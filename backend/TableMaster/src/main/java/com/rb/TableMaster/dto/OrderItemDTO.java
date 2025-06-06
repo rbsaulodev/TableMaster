@@ -2,9 +2,11 @@ package com.rb.TableMaster.dto;
 
 import com.rb.TableMaster.model.enums.OrderItemStatus;
 import jakarta.validation.constraints.*;
+import lombok.Builder;
 
 import java.math.BigDecimal;
 
+@Builder
 public record OrderItemDTO(
         @PositiveOrZero
         Long id,

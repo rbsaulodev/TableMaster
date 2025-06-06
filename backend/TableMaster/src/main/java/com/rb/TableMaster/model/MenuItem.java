@@ -1,10 +1,11 @@
+// backend/TableMaster/src/main/java/com/rb/TableMaster/model/MenuItem.java
 package com.rb.TableMaster.model;
 
 import com.rb.TableMaster.model.enums.MenuCategory;
 import com.rb.TableMaster.model.enums.DrinkType;
+import com.rb.TableMaster.model.enums.Difficulty; // ADICIONE ESTE IMPORT
 import jakarta.persistence.*;
 import lombok.Data;
-
 import java.math.BigDecimal;
 
 @Data
@@ -34,4 +35,9 @@ public class MenuItem {
 
     @Column(nullable = false)
     private boolean available = true;
+
+    // NOVOS CAMPOS PARA O COZINHEIRO
+    private Integer preparationTime; // Tempo de preparo em minutos
+    @Enumerated(EnumType.STRING)
+    private Difficulty difficulty; // Dificuldade: EASY, MEDIUM, DIFFICULT
 }

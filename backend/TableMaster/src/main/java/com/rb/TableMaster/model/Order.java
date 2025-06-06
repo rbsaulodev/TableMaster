@@ -10,6 +10,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList; // Importar ArrayList
 import java.util.List;
 
 @Data
@@ -38,7 +39,8 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference("order-items")
-    private List<OrderItem> items;
+    @Builder.Default
+    private List<OrderItem> items = new ArrayList<>();
 
     @NotNull(message = "A data de criação é obrigatória")
     private LocalDateTime createdAt;
@@ -50,6 +52,7 @@ public class Order {
     private BigDecimal totalValue;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method")
     private PaymentMethod paymentMethod;
 
     private LocalDateTime closedAt;

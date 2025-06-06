@@ -30,7 +30,7 @@ public class RestaurantTableService {
     private final RestaurantTableMapper tableMapper;
     private final OrderRepository orderRepository;
     private final WebSocketController webSocketController;
-    private final UserRepository userRepository; // Injete UserRepository para buscar o usuário
+    private final UserRepository userRepository;
 
     @Transactional
     public List<RestaurantTableDTO> listAll() {
@@ -45,26 +45,17 @@ public class RestaurantTableService {
         RestaurantTable table = tableRepository.findById(tableId)
                 .orElseThrow(() -> new RecordNotFoundException(tableId, RestaurantTable.class));
 
-        User user = userRepository.findById(userCpf) // Buscar usuário pelo CPF
+        User user = userRepository.findById(userCpf)
                 .orElseThrow(() -> new RecordNotFoundException(userCpf, User.class));
 
         if (table.getStatus() != TableStatus.AVAILABLE) {
             throw new IllegalStateException("A mesa não está disponível para reserva");
         }
-
         table.setStatus(TableStatus.RESERVED);
-        // O campo 'reservedTime' na entidade RestaurantTable pode não existir,
-        // mas ele existe na OrderDTO. Se você precisar persistir a hora da reserva na mesa,
-        // adicione um campo LocalDateTime 'reservedTime' à entidade RestaurantTable.
-        // Por enquanto, vamos assumir que ele é mais relevante no contexto do pedido.
 
-        RestaurantTable savedTableEntity = tableRepository.save(table); // Salva a mesa com status RESERVED
+        RestaurantTable savedTableEntity = tableRepository.save(table);
         RestaurantTableDTO savedTableDTO = tableMapper.toDTO(savedTableEntity);
 
-        // Embora a reserva da mesa não crie um pedido automaticamente,
-        // é comum que o cliente depois crie um "rascunho" de pedido associado a essa reserva.
-        // Se a reserva criar um pedido inicial, o DTO da mesa precisaria refletir isso.
-        // Por enquanto, enviamos a atualização do status da mesa.
         System.out.println("DEBUG WS Backend: Enviando TableUpdate (Reserva) para: " + savedTableDTO.id() + " com Status: " + savedTableDTO.status());
         webSocketController.sendTableUpdate(savedTableDTO);
         return savedTableDTO;
@@ -75,7 +66,7 @@ public class RestaurantTableService {
         RestaurantTable table = tableRepository.findById(tableId)
                 .orElseThrow(() -> new RecordNotFoundException(tableId, RestaurantTable.class));
 
-        User user = userRepository.findById(userCpf) // Buscar usuário pelo CPF
+        User user = userRepository.findById(userCpf)
                 .orElseThrow(() -> new RecordNotFoundException(userCpf, User.class));
 
         if (table.getStatus() == TableStatus.OCCUPIED) {
@@ -83,11 +74,11 @@ public class RestaurantTableService {
         }
 
         table.setStatus(TableStatus.OCCUPIED);
-        RestaurantTable savedTableEntity = tableRepository.save(table); // Salva a mesa com status OCCUPIED
+        RestaurantTable savedTableEntity = tableRepository.save(table);
         RestaurantTableDTO savedTableDTO = tableMapper.toDTO(savedTableEntity);
 
         System.out.println("DEBUG WS Backend: Enviando TableUpdate (Ocupar) para: " + savedTableDTO.id() + " com Status: " + savedTableDTO.status());
-        System.out.println("DEBUG WS Backend: DTO completo enviado ao ocupar: " + savedTableDTO); // Log de debug
+        System.out.println("DEBUG WS Backend: DTO completo enviado ao ocupar: " + savedTableDTO);
 
         webSocketController.sendTableUpdate(savedTableDTO);
         return savedTableDTO;
@@ -101,9 +92,6 @@ public class RestaurantTableService {
         if (table.getStatus() == TableStatus.AVAILABLE) {
             throw new IllegalStateException("A mesa já está disponível");
         }
-
-        // Verifica se há pedidos em aberto associados a esta mesa
-        // (Assumindo que findByTableAndStatusIn funciona e que `table` é a entidade persistida)
         List<Order> openOrders = orderRepository.findByTableAndStatusIn(table,
                 List.of(OrderStatus.OPEN, OrderStatus.UNPAID));
 
@@ -111,14 +99,14 @@ public class RestaurantTableService {
             throw new IllegalStateException("Não é possível liberar a mesa com pedidos em aberto");
         }
 
-        table.setStatus(TableStatus.AVAILABLE); // Define o status para AVAILABLE
-        RestaurantTable savedTableEntity = tableRepository.save(table); // SALVA a entidade ANTES de enviar
-        RestaurantTableDTO savedTableDTO = tableMapper.toDTO(savedTableEntity); // Converte para DTO do objeto salvo
+        table.setStatus(TableStatus.AVAILABLE);
+        RestaurantTable savedTableEntity = tableRepository.save(table);
+        RestaurantTableDTO savedTableDTO = tableMapper.toDTO(savedTableEntity);
 
         System.out.println("DEBUG WS Backend: Enviando TableUpdate (Liberar) para: " + savedTableDTO.id() + " com Status: " + savedTableDTO.status());
-        System.out.println("DEBUG WS Backend: DTO completo enviado ao liberar: " + savedTableDTO); // Log de debug
+        System.out.println("DEBUG WS Backend: DTO completo enviado ao liberar: " + savedTableDTO);
 
-        webSocketController.sendTableUpdate(savedTableDTO); // Envia o DTO (que agora reflete o estado salvo)
+        webSocketController.sendTableUpdate(savedTableDTO);
         return savedTableDTO;
     }
 
@@ -145,8 +133,6 @@ public class RestaurantTableService {
         RestaurantTable table = tableMapper.toEntity(tableDTO);
         table.setStatus(TableStatus.AVAILABLE);
         RestaurantTable savedTable = tableRepository.save(table);
-        // Se precisar notificar a criação de novas mesas via WS para outras interfaces
-        // webSocketController.sendTableUpdate(tableMapper.toDTO(savedTable));
         return tableMapper.toDTO(savedTable);
     }
 
@@ -156,15 +142,8 @@ public class RestaurantTableService {
                 .orElseThrow(() -> new RecordNotFoundException(id, RestaurantTable.class));
 
         tableMapper.updateEntityFromDTO(tableDTO, existingTable);
-        // Se o DTO de entrada (tableDTO) contiver o status atualizado,
-        // o mapeador já o terá aplicado ao existingTable.
-
         RestaurantTable updatedTable = tableRepository.save(existingTable);
-        // Se a atualização mudar o status da mesa e você quiser que o frontend receba,
-        // chame o WebSocket aqui.
-        // Este `update` é genérico, então pode ser chamado para qualquer campo.
-        // Se uma atualização específica de status for importante para o WS,
-        // é melhor usar os métodos específicos `releaseTable` e `occupyTable`.
+
         System.out.println("DEBUG WS Backend: Enviando TableUpdate (Update Genérico) para: " + updatedTable.getId() + " com Status: " + updatedTable.getStatus());
         webSocketController.sendTableUpdate(tableMapper.toDTO(updatedTable));
         return tableMapper.toDTO(updatedTable);
@@ -180,7 +159,5 @@ public class RestaurantTableService {
         }
 
         tableRepository.delete(table);
-        // Se precisar enviar via WS que uma mesa foi DELETADA (não apenas seu status),
-        // precisaria de uma lógica de notificação para deleção (ex: enviar o ID da mesa deletada).
     }
 }

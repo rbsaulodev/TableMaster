@@ -74,4 +74,9 @@ public class WaiterController {
     public ResponseEntity<Void> deliverOrderItem(@PathVariable Long orderItemId) {
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/notifications/account-requests")
+    public List<NotificationDTO> getAccountRequestNotifications() {
+        return notificationService.getUnreadAccountRequestNotifications();
+    }
 }

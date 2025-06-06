@@ -87,10 +87,12 @@ public class MenuItemService {
                 .orElseThrow(() -> new RecordNotFoundException(id, MenuItem.class));
     }
 
-    public void delete(@NotNull @Positive Long id) {
-        MenuItem item = menuItemRepository.findById(id)
-                .orElseThrow(() -> new RecordNotFoundException(id, MenuItem.class));
-        menuItemRepository.delete(item);
+    @Transactional
+    public void delete(Long id) {
+        if (!menuItemRepository.existsById(id)) {
+            throw new RecordNotFoundException("Item de menu não encontrado com ID: " + id);
+        }
+        menuItemRepository.deleteById(id);
     }
 
     private void validateMenuItem(MenuItemDTO menuItemDTO) {
@@ -117,6 +119,4 @@ public class MenuItemService {
         MenuItem updatedMenuItem = menuItemRepository.save(menuItem);
         return menuItemMapper.toDTO(updatedMenuItem);
     }
-
-
 }
